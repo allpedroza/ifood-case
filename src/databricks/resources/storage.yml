@@ -1,0 +1,39 @@
+resources:
+  schemas:
+    landing:
+      name: ${var.landing_schema}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Área de aterrissagem que preserva os arquivos Parquet originais da
+        NYC TLC sem transformações.
+
+    bronze:
+      name: ${var.bronze_schema}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Camada de dados brutos estruturados em tabelas Delta, acrescidos de
+        metadados de origem, categoria e ingestão.
+
+    silver_schema:
+      name: ${var.silver_schema}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Camada de dados tratados e padronizados da NYC TLC, limitada ao
+        período analítico de janeiro a maio de 2023.
+
+    gold_schema:
+      name: ${var.gold_schema}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Camada de consumo da NYC TLC com campos selecionados e governados
+        para análise.
+
+  volumes:
+    # Identificador interno preservado para manter a identidade do Volume
+    # gerenciado já implantado. O nome físico segue o padrão Landing.
+    tlc_raw:
+      name: ${var.volume_name}
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.landing.name}
+      volume_type: MANAGED
+      comment: Arquivos Parquet originais e imutáveis da NYC TLC.

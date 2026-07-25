@@ -1,0 +1,40 @@
+bundle:
+  name: ifood-case
+  engine: direct
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - ..
+    - .
+
+variables:
+  catalog:
+    description: Catálogo existente no Unity Catalog do workspace Free (obrigatório)
+    default: case_ifood
+  landing_schema:
+    description: Schema da área de landing
+    default: tlc_data_landing
+  bronze_schema:
+    description: Schema das tabelas Bronze
+    default: tlc_data_bronze
+  silver_schema:
+    description: Schema das tabelas Silver
+    default: tlc_data_silver
+  gold_schema:
+    description: Schema das tabelas Gold
+    default: tlc_data_gold
+  volume_name:
+    description: Volume gerenciado para os Parquets originais
+    default: nyc_tlc_landing
+
+targets:
+  free:
+    mode: production
+    default: true
+    workspace:
+      host: https://dbc-fcfa10b2-faab.cloud.databricks.com
+      profile: ap_ifood
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

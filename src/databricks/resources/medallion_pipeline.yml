@@ -1,0 +1,30 @@
+resources:
+  pipelines:
+    medallion:
+      name: pipeline_medallion_nyc_tlc
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.bronze.name}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      tags:
+        projeto: case_ifood
+        arquitetura: medallion
+      configuration:
+        ifood.landing_path: /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc
+        ifood.bronze_catalog: ${var.catalog}
+        ifood.bronze_schema: ${resources.schemas.bronze.name}
+        ifood.silver_catalog: ${var.catalog}
+        ifood.silver_schema: ${resources.schemas.silver_schema.name}
+        ifood.gold_catalog: ${var.catalog}
+        ifood.gold_schema: ${resources.schemas.gold_schema.name}
+        ifood.metadata_contract_path: /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc/_metadata/contracts
+        ifood.silver.start_month: "2023-01"
+        ifood.silver.end_month: "2023-05"
+      libraries:
+        - file:
+            path: ../../02_bronze.py
+        - file:
+            path: ../../03_silver.py
+        - file:
+            path: ../../04_gold.py

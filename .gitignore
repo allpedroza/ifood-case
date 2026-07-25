@@ -1,0 +1,9 @@
+.venv/
+.databricks/
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+tlc_data/

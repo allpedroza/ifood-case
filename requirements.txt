@@ -1,0 +1,14 @@
+# Manipulação e análise local de dados tabulares
+pandas>=2.2,<3.0
+
+# Leitura local dos arquivos Parquet com pandas
+pyarrow>=18,<24
+
+# Kernel para usar este ambiente virtual em notebooks Jupyter/VS Code
+ipykernel>=6.29,<8.0
+
+# Requisições HTTP para baixar os arquivos da NYC TLC (src/01_extracao.py)
+requests>=2.32,<3.0
+
+# Extração determinística dos dicionários oficiais em PDF
+pypdf>=6,<7

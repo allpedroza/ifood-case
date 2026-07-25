@@ -1,0 +1,56 @@
+resources:
+  jobs:
+    ingestion:
+      name: job_ingestao_nyc_tlc
+      description: >-
+        Realiza a extração periódica dos arquivos Parquet de viagens da NYC
+        TLC e os armazena de forma imutável na camada Landing do Unity Catalog.
+      parameters:
+        - name: inicio
+          default: "2023-01"
+        - name: fim
+          default: auto
+
+      schedule:
+        quartz_cron_expression: "0 0 8 15 * ?"
+        timezone_id: America/Sao_Paulo
+        pause_status: UNPAUSED
+
+      tasks:
+        - task_key: extrair_parquets
+          spark_python_task:
+            python_file: ../../01_extracao.py
+            parameters:
+              - --inicio
+              - "{{job.parameters.inicio}}"
+              - --fim
+              - "{{job.parameters.fim}}"
+              - --destino
+              - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc
+          environment_key: default
+
+        - task_key: gerar_contratos
+          depends_on:
+            - task_key: extrair_parquets
+          spark_python_task:
+            python_file: ../../metadata/generate_contracts.py
+            parameters:
+              - --metadata-dir
+              - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc/_metadata
+              - --output-dir
+              - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc/_metadata/contracts
+          environment_key: default
+
+        - task_key: atualizar_medallion
+          depends_on:
+            - task_key: gerar_contratos
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.medallion.id}
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - requests>=2.32,<3.0
+              - pypdf>=6,<7
