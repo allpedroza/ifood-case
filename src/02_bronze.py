@@ -119,6 +119,12 @@ TYPE_MAP = {
     "timestamp": TimestampType(),
 }
 
+# Variações de capitalização observadas nos arquivos oficiais. Mudanças de
+# tipo físico são tratadas automaticamente pela leitura de `_rescued_data`.
+RESCUED_COLUMN_ALIASES = {
+    "airport_fee": ("Airport_fee",),
+}
+
 
 def validar_schemas():
     """Garante o padrão tlc_data_<layer> configurado no Bundle."""
@@ -174,6 +180,20 @@ def schema_bronze(tipo: str):
     )
 
 
+def valor_canonico(nome: str, metadado: dict):
+    """Normaliza o valor direto ou resgatado para o tipo do contrato."""
+    tipo_destino = TYPE_MAP[metadado["type"]]
+    candidatos = [F.col(nome).cast(tipo_destino)]
+    for chave_json in (nome, *RESCUED_COLUMN_ALIASES.get(nome, ())):
+        candidatos.append(
+            F.get_json_object(
+                F.col("_rescued_data"),
+                f"$.{chave_json}",
+            ).cast(tipo_destino)
+        )
+    return F.coalesce(*candidatos).alias(nome)
+
+
 def ler_parquets(tipo: str):
     """Lê incrementalmente os Parquets brutos de uma categoria."""
     df = (
@@ -183,7 +203,7 @@ def ler_parquets(tipo: str):
         .load(f"{LANDING_PATH}/{tipo}")
     )
     colunas_contrato = [
-        F.col(nome).cast(TYPE_MAP[metadado["type"]]).alias(nome)
+        valor_canonico(nome, metadado)
         for nome, metadado in CONTRATOS[tipo]["columns"].items()
     ]
     return df.select(

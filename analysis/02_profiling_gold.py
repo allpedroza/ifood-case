@@ -26,10 +26,10 @@ RANDOM_SEED = 42
 dbutils.widgets.text("sample_fraction", "0.01", "Fração da amostra")
 dbutils.widgets.text("max_rows", "100000", "Máximo de registros no Pandas")
 
-sample_fraction = float(dbutils.widgets.get("sample_fraction"))
+requested_fraction = float(dbutils.widgets.get("sample_fraction"))
 max_rows = int(dbutils.widgets.get("max_rows"))
 
-if not 0 < sample_fraction <= 1:
+if not 0 < requested_fraction <= 1:
     raise ValueError("sample_fraction deve estar no intervalo (0, 1].")
 if max_rows <= 0:
     raise ValueError("max_rows deve ser maior que zero.")
@@ -68,24 +68,36 @@ coverage_expressions = [
     F.max("tpep_pickup_datetime").alias("max_pickup_datetime"),
 ]
 
-display(gold.agg(*coverage_expressions))
+coverage = gold.agg(*coverage_expressions)
+display(coverage)
+total_rows = coverage.first()["total_rows"]
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Amostra convertida para Pandas
 # MAGIC
-# MAGIC A seleção é reproduzível pela semente fixa. `max_rows` funciona como
-# MAGIC proteção adicional de memória mesmo quando uma fração maior é informada.
+# MAGIC A fração efetiva respeita simultaneamente os dois parâmetros. A amostra
+# MAGIC é materializada entre todas as partições antes do limite, evitando que
+# MAGIC a ordem física dos arquivos concentre o resultado em poucos meses.
 
 # COMMAND ----------
+
+safe_fraction = min(
+    requested_fraction,
+    max_rows / total_rows if total_rows else 0,
+)
+
+if safe_fraction == 0:
+    raise ValueError("A tabela Gold não possui registros.")
 
 sample = (
     gold.sample(
         withReplacement=False,
-        fraction=sample_fraction,
+        fraction=safe_fraction,
         seed=RANDOM_SEED,
     )
+    .repartition(1)
     .limit(max_rows)
 )
 
@@ -98,7 +110,8 @@ if pandas_sample.empty:
 
 print(
     f"Registros enviados ao Pandas: {len(pandas_sample):,} | "
-    f"Colunas: {len(pandas_sample.columns)}"
+    f"Colunas: {len(pandas_sample.columns)} | "
+    f"Fração efetiva: {safe_fraction:.8f}"
 )
 display(pandas_sample.head(20))
 
