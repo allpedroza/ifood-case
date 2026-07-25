@@ -9,6 +9,7 @@ from pyspark.sql.types import (
     DoubleType,
     IntegerType,
     LongType,
+    MapType,
     StringType,
     StructField,
     StructType,
@@ -124,6 +125,7 @@ TYPE_MAP = {
 RESCUED_COLUMN_ALIASES = {
     "airport_fee": ("Airport_fee",),
 }
+RESCUED_MAP_TYPE = MapType(StringType(), StringType())
 
 
 def validar_schemas():
@@ -186,9 +188,9 @@ def valor_canonico(nome: str, metadado: dict):
     candidatos = [F.col(nome).cast(tipo_destino)]
     for chave_json in (nome, *RESCUED_COLUMN_ALIASES.get(nome, ())):
         candidatos.append(
-            F.get_json_object(
-                F.col("_rescued_data"),
-                f"$.{chave_json}",
+            F.element_at(
+                F.col("_rescued_values"),
+                F.lit(chave_json),
             ).cast(tipo_destino)
         )
     return F.coalesce(*candidatos).alias(nome)
@@ -201,6 +203,10 @@ def ler_parquets(tipo: str):
         .option("cloudFiles.format", "parquet")
         .option("cloudFiles.includeExistingFiles", "true")
         .load(f"{LANDING_PATH}/{tipo}")
+        .withColumn(
+            "_rescued_values",
+            F.from_json(F.col("_rescued_data"), RESCUED_MAP_TYPE),
+        )
     )
     colunas_contrato = [
         valor_canonico(nome, metadado)
