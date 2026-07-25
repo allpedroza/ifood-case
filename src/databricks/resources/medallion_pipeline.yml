@@ -21,6 +21,7 @@ resources:
         ifood.metadata_contract_path: /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc/_metadata/contracts
         ifood.silver.start_month: "2023-01"
         ifood.silver.end_month: "2023-05"
+        ifood.analysis.passenger_reference_month: "2023-05"
       libraries:
         - file:
             path: ../../02_bronze.py

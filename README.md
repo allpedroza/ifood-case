@@ -68,6 +68,11 @@ A Gold publica `gold_yellow_trips_consumption` com os campos obrigatórios
 `tpep_dropoff_datetime`, preservando as descrições em inglês extraídas
 deterministicamente do PDF oficial.
 
+A Gold também publica `gold_taxi_passengers_by_hour`, que interpreta táxi no
+sentido regulatório e combina, por `UNION ALL`, viagens Yellow e Green de maio
+de 2023. FHV e High Volume FHV ficam fora desse produto. Contagens nulas ou
+menores ou iguais a zero são excluídas da média e contabilizadas separadamente.
+
 ```bash
 cd src/databricks
 databricks bundle validate

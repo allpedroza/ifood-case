@@ -59,17 +59,18 @@ ORDER BY mes_referencia;
 -- MAGIC %md
 -- MAGIC ## 2. Média de passageiros por hora do dia em maio de 2023
 -- MAGIC
--- MAGIC A hora representa a hora de início da viagem, extraída de
--- MAGIC `tpep_pickup_datetime`.
+-- MAGIC Táxi é interpretado no sentido regulatório: Yellow Taxi e Green Taxi.
+-- MAGIC FHV e High Volume FHV não são incluídos. A Gold considera somente
+-- MAGIC `passenger_count > 0` e expõe a quantidade descartada.
 
 -- COMMAND ----------
 
 SELECT
-  HOUR(tpep_pickup_datetime) AS hora_do_dia,
-  ROUND(AVG(passenger_count), 2) AS media_passageiros,
-  COUNT(passenger_count) AS viagens_com_contagem
-FROM case_ifood.tlc_data_gold.gold_yellow_trips_consumption
-WHERE tpep_pickup_datetime >= TIMESTAMP '2023-05-01 00:00:00'
-  AND tpep_pickup_datetime <  TIMESTAMP '2023-06-01 00:00:00'
-GROUP BY HOUR(tpep_pickup_datetime)
+  hour_of_day AS hora_do_dia,
+  ROUND(average_passenger_count, 2) AS media_passageiros,
+  trips_considered AS viagens_consideradas,
+  yellow_trips_considered AS viagens_yellow,
+  green_trips_considered AS viagens_green,
+  trips_discarded AS viagens_descartadas
+FROM case_ifood.tlc_data_gold.gold_taxi_passengers_by_hour
 ORDER BY hora_do_dia;
