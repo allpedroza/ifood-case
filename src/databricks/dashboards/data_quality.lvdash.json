@@ -1,0 +1,400 @@
+{
+  "datasets": [
+    {
+      "name": "latest_run",
+      "displayName": "Última execução",
+      "query": "SELECT date_format(executed_at, 'yyyy-MM-dd HH:mm:ss') AS last_execution, evaluated_rules, ok_results, warn_results, fail_results FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary QUALIFY ROW_NUMBER() OVER (ORDER BY executed_at DESC) = 1"
+    },
+    {
+      "name": "table_success",
+      "displayName": "Sucesso por tabela",
+      "query": "SELECT layer, table_name, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1) ORDER BY CASE layer WHEN 'landing' THEN 1 WHEN 'bronze' THEN 2 WHEN 'silver' THEN 3 WHEN 'gold' THEN 4 END"
+    },
+    {
+      "name": "dimension_success",
+      "displayName": "Sucesso por dimensão",
+      "query": "SELECT layer, dimension, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_dimension_success WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+    },
+    {
+      "name": "rule_matrix",
+      "displayName": "Violações por regra e camada",
+      "query": "SELECT layer, rule_name, violation_count, violation_percentage, status FROM case_ifood.tlc_data_quality.dq_dashboard_results WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+    },
+    {
+      "name": "success_history",
+      "displayName": "Histórico de sucesso",
+      "query": "SELECT execution_date, layer, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success ORDER BY execution_date, layer"
+    }
+  ],
+  "pages": [
+    {
+      "name": "quality_overview",
+      "displayName": "Monitoramento de qualidade",
+      "layout": [
+        {
+          "widget": {
+            "name": "dashboard_title",
+            "textbox_spec": "# Monitoramento de qualidade — NYC TLC\nRegras determinísticas avaliadas diariamente em Landing, Bronze, Silver e Gold."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "last_execution",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "last_execution",
+                      "expression": "`last_execution`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "target": {
+                  "displayName": "Última execução",
+                  "fieldName": "last_execution"
+                }
+              },
+              "version": 2,
+              "widgetType": "counter"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "evaluated_rules",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "evaluated_rules",
+                      "expression": "`evaluated_rules`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "target": {
+                  "displayName": "Regras avaliadas",
+                  "fieldName": "evaluated_rules"
+                }
+              },
+              "version": 2,
+              "widgetType": "counter"
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "table_success_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "table_success",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "success_percentage",
+                      "expression": "`success_percentage`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "x": {
+                  "displayName": "Camada",
+                  "fieldName": "layer",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "axis": {
+                    "title": "% sucesso"
+                  },
+                  "displayName": "% sucesso",
+                  "fieldName": "success_percentage",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "% sucesso por tabela",
+                "description": "Percentual de verificações de linha aprovadas na última execução."
+              },
+              "version": 3,
+              "widgetType": "bar"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "dimension_success_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dimension_success",
+                  "fields": [
+                    {
+                      "name": "dimension",
+                      "expression": "`dimension`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "success_percentage",
+                      "expression": "`success_percentage`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "color": {
+                  "displayName": "Camada",
+                  "fieldName": "layer",
+                  "legend": {
+                    "position": "right",
+                    "title": "Camada"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "x": {
+                  "displayName": "Dimensão",
+                  "fieldName": "dimension",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "axis": {
+                    "title": "% sucesso"
+                  },
+                  "displayName": "% sucesso",
+                  "fieldName": "success_percentage",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "% sucesso por dimensão",
+                "description": "Resultado de validity e consistency por camada."
+              },
+              "version": 3,
+              "widgetType": "bar"
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "rule_violations_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "rule_matrix",
+                  "fields": [
+                    {
+                      "name": "rule_name",
+                      "expression": "`rule_name`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "violation_percentage",
+                      "expression": "`violation_percentage`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "color": {
+                  "displayName": "Camada",
+                  "fieldName": "layer",
+                  "legend": {
+                    "position": "right",
+                    "title": "Camada"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "x": {
+                  "displayName": "Regra",
+                  "fieldName": "rule_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "axis": {
+                    "title": "% violações"
+                  },
+                  "displayName": "% violações",
+                  "fieldName": "violation_percentage",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "frame": {
+                "showDescription": false,
+                "showTitle": true,
+                "title": "Violações por regra e camada"
+              },
+              "version": 3,
+              "widgetType": "bar"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "success_history_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "success_history",
+                  "fields": [
+                    {
+                      "name": "execution_date",
+                      "expression": "`execution_date`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "success_percentage",
+                      "expression": "`success_percentage`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "color": {
+                  "displayName": "Camada",
+                  "fieldName": "layer",
+                  "legend": {
+                    "position": "right",
+                    "title": "Camada"
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "x": {
+                  "displayName": "Data",
+                  "fieldName": "execution_date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "axis": {
+                    "title": "% sucesso"
+                  },
+                  "displayName": "% sucesso",
+                  "fieldName": "success_percentage",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "frame": {
+                "showDescription": false,
+                "showTitle": true,
+                "title": "Histórico diário de sucesso"
+              },
+              "version": 3,
+              "widgetType": "bar"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ]
+    }
+  ]
+}

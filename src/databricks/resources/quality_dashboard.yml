@@ -1,0 +1,7 @@
+resources:
+  dashboards:
+    data_quality:
+      display_name: dashboard_monitoramento_qualidade_nyc_tlc
+      warehouse_id: ${var.sql_warehouse_id}
+      file_path: ../dashboards/data_quality.lvdash.json
+      embed_credentials: false

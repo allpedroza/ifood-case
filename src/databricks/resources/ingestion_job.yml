@@ -50,26 +50,8 @@ resources:
         - task_key: avaliar_qualidade
           depends_on:
             - task_key: atualizar_medallion
-          spark_python_task:
-            python_file: ../../quality/evaluate_quality.py
-            parameters:
-              - --catalog
-              - ${var.catalog}
-              - --landing-path
-              - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc
-              - --bronze-schema
-              - ${resources.schemas.bronze.name}
-              - --silver-schema
-              - ${resources.schemas.silver_schema.name}
-              - --gold-schema
-              - ${resources.schemas.gold_schema.name}
-              - --quality-schema
-              - ${resources.schemas.quality_schema.name}
-              - --start-month
-              - "2023-01"
-              - --end-month
-              - "2023-05"
-          environment_key: default
+          run_job_task:
+            job_id: ${resources.jobs.quality_monitoring.id}
 
       environments:
         - environment_key: default

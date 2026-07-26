@@ -29,6 +29,9 @@ variables:
   quality_schema:
     description: Schema de regras e resultados de qualidade de dados
     default: tlc_data_quality
+  sql_warehouse_id:
+    description: SQL Warehouse usado pelo dashboard de qualidade
+    default: 4c5e862e31dfcba6
   volume_name:
     description: Volume gerenciado para os Parquets originais
     default: nyc_tlc_landing

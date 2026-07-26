@@ -140,6 +140,114 @@ def create_quality_objects(
         """
     )
 
+    spark.sql(
+        f"""
+        CREATE OR REPLACE VIEW {namespace}.dq_dashboard_results
+        COMMENT 'Histórico diário enriquecido para o dashboard de qualidade'
+        AS
+        SELECT
+          results.execution_id,
+          results.executed_at,
+          to_date(
+            from_utc_timestamp(results.executed_at, 'America/Sao_Paulo')
+          ) AS execution_date,
+          results.rule_id,
+          rules.rule_name,
+          rules.dimension,
+          rules.description,
+          rules.severity,
+          results.layer,
+          results.table_name,
+          results.reference_start,
+          results.reference_end,
+          results.total_rows,
+          results.violation_count,
+          results.violation_percentage,
+          results.maximum_violation_percentage,
+          results.status,
+          results.details
+        FROM {namespace}.dq_rule_results AS results
+        INNER JOIN {namespace}.dq_rule_catalog AS rules
+          ON results.rule_id = rules.rule_id
+        """
+    )
+
+    spark.sql(
+        f"""
+        CREATE OR REPLACE VIEW {namespace}.dq_dashboard_table_success
+        COMMENT 'Percentual diário de verificações aprovadas por tabela'
+        AS
+        SELECT
+          execution_id,
+          executed_at,
+          execution_date,
+          layer,
+          table_name,
+          reference_start,
+          reference_end,
+          COUNT(*) AS evaluated_rules,
+          SUM(total_rows) AS evaluated_checks,
+          SUM(violation_count) AS failed_checks,
+          ROUND(
+            100.0 * (
+              1.0 - SUM(violation_count) / NULLIF(SUM(total_rows), 0)
+            ),
+            6
+          ) AS success_percentage
+        FROM {namespace}.dq_dashboard_results
+        GROUP BY ALL
+        """
+    )
+
+    spark.sql(
+        f"""
+        CREATE OR REPLACE VIEW {namespace}.dq_dashboard_dimension_success
+        COMMENT 'Percentual diário de verificações aprovadas por dimensão'
+        AS
+        SELECT
+          execution_id,
+          executed_at,
+          execution_date,
+          layer,
+          table_name,
+          dimension,
+          reference_start,
+          reference_end,
+          COUNT(*) AS evaluated_rules,
+          SUM(total_rows) AS evaluated_checks,
+          SUM(violation_count) AS failed_checks,
+          ROUND(
+            100.0 * (
+              1.0 - SUM(violation_count) / NULLIF(SUM(total_rows), 0)
+            ),
+            6
+          ) AS success_percentage
+        FROM {namespace}.dq_dashboard_results
+        GROUP BY ALL
+        """
+    )
+
+    spark.sql(
+        f"""
+        CREATE OR REPLACE VIEW {namespace}.dq_dashboard_run_summary
+        COMMENT 'Resumo diário das execuções para indicadores do dashboard'
+        AS
+        SELECT
+          execution_id,
+          executed_at,
+          execution_date,
+          reference_start,
+          reference_end,
+          COUNT(*) AS evaluated_rules,
+          COUNT_IF(status = 'OK') AS ok_results,
+          COUNT_IF(status = 'WARN') AS warn_results,
+          COUNT_IF(status = 'FAIL') AS fail_results,
+          COUNT(DISTINCT layer) AS evaluated_layers
+        FROM {namespace}.dq_dashboard_results
+        GROUP BY ALL
+        """
+    )
+
 
 def synchronize_catalog(
     spark: SparkSession,

@@ -7,6 +7,7 @@ from pathlib import Path
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
+    ArrayType,
     DoubleType,
     IntegerType,
     LongType,
@@ -45,6 +46,9 @@ GOLD_COLUMNS = [
     ("tpep_pickup_datetime", "tpep_pickup_datetime", TimestampType()),
     ("tpep_dropoff_datetime", "tpep_dropoff_datetime", TimestampType()),
     ("_reference_month", "_reference_month", StringType()),
+    ("_source_file", "_source_file", StringType()),
+    ("_ingested_at", "_ingested_at", TimestampType()),
+    ("_service_type", "_service_type", StringType()),
     # ("trip_distance", "trip_distance", DoubleType()),
     # ("RatecodeID", "ratecode_id", DoubleType()),
     # ("store_and_fwd_flag", "store_and_fwd_flag", StringType()),
@@ -60,10 +64,6 @@ GOLD_COLUMNS = [
     # ("congestion_surcharge", "congestion_surcharge", DoubleType()),
     # ("airport_fee", "airport_fee", DoubleType()),
     # ("cbd_congestion_fee", "cbd_congestion_fee", DoubleType()),
-    # Colunas técnicas de linhagem disponíveis na Silver.
-    # ("_source_file", "_source_file", StringType()),
-    # ("_ingested_at", "_ingested_at", TimestampType()),
-    # ("_service_type", "_service_type", StringType()),
 ]
 
 TECHNICAL_COLUMN_DESCRIPTIONS = {
@@ -203,6 +203,45 @@ PASSENGER_BY_HOUR_SCHEMA = StructType(
                 ),
             },
         ),
+        StructField(
+            "_reference_month",
+            StringType(),
+            False,
+            {
+                "comment": "Reference month of the aggregated trips.",
+                "source_column": "_reference_month",
+            },
+        ),
+        StructField(
+            "_service_types",
+            ArrayType(StringType(), containsNull=False),
+            False,
+            {
+                "comment": "NYC TLC service categories included in the aggregate.",
+                "source_column": "_service_type",
+            },
+        ),
+        StructField(
+            "_source_files",
+            ArrayType(StringType(), containsNull=False),
+            False,
+            {
+                "comment": "Landing files that contributed to the aggregate.",
+                "source_column": "_source_file",
+            },
+        ),
+        StructField(
+            "_latest_source_ingested_at",
+            TimestampType(),
+            True,
+            {
+                "comment": (
+                    "Most recent Bronze ingestion timestamp among the "
+                    "contributing trips."
+                ),
+                "source_column": "_ingested_at",
+            },
+        ),
     ]
 )
 
@@ -232,14 +271,18 @@ def gold_taxi_passengers_by_hour():
     ).select(
         F.col("tpep_pickup_datetime").alias("pickup_datetime"),
         "passenger_count",
-        F.lit("yellow").alias("service_type"),
+        F.col("_service_type").alias("service_type"),
+        "_source_file",
+        "_ingested_at",
     )
     green = spark.read.table(
         f"`{SILVER_CATALOG}`.`{SILVER_SCHEMA}`.`silver_green_trips`"
     ).select(
         F.col("lpep_pickup_datetime").alias("pickup_datetime"),
         "passenger_count",
-        F.lit("green").alias("service_type"),
+        F.col("_service_type").alias("service_type"),
+        "_source_file",
+        "_ingested_at",
     )
     trips = yellow.unionByName(green).filter(
         (F.col("pickup_datetime") >= F.lit(PASSENGER_MONTH_START))
@@ -264,6 +307,29 @@ def gold_taxi_passengers_by_hour():
                 F.when(valid & (F.col("service_type") == "green"), 1)
             ).alias("green_trips_considered"),
             F.count(F.when(discarded, 1)).alias("trips_discarded"),
+            F.sort_array(F.collect_set("service_type")).alias(
+                "_service_types"
+            ),
+            F.sort_array(F.collect_set("_source_file")).alias(
+                "_source_files"
+            ),
+            F.max("_ingested_at").alias("_latest_source_ingested_at"),
+        )
+        .withColumn(
+            "_reference_month",
+            F.lit(PASSENGER_REFERENCE_MONTH),
+        )
+        .select(
+            "hour_of_day",
+            "average_passenger_count",
+            "trips_considered",
+            "yellow_trips_considered",
+            "green_trips_considered",
+            "trips_discarded",
+            "_reference_month",
+            "_service_types",
+            "_source_files",
+            "_latest_source_ingested_at",
         )
         .orderBy("hour_of_day")
     )

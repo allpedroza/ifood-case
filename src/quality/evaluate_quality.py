@@ -7,6 +7,7 @@ import calendar
 from datetime import date, datetime, timezone
 from functools import reduce
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -317,6 +318,18 @@ def main() -> None:
         spark.createDataFrame(results, RESULT_SCHEMA)
         .write.mode("append")
         .saveAsTable(target)
+    )
+    execution_date = executed_at.astimezone(
+        ZoneInfo("America/Sao_Paulo")
+    ).date()
+    spark.sql(
+        f"""
+        DELETE FROM {target}
+        WHERE execution_id <> '{execution_id}'
+          AND to_date(
+            from_utc_timestamp(executed_at, 'America/Sao_Paulo')
+          ) = DATE '{execution_date.isoformat()}'
+        """
     )
     print(
         f"Execução {execution_id}: {len(results)} resultados gravados em "
