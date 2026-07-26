@@ -1,0 +1,51 @@
+version: 1
+
+defaults:
+  severity: WARN
+  maximum_violation_percentage: 0.0
+  active: true
+
+rules:
+  - id: passenger_count_non_positive
+    name: Quantidade de passageiros não positiva
+    dimension: validity
+    description: Identifica viagens com quantidade de passageiros menor ou igual a zero.
+    expression: passenger_count <= 0
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
+  - id: total_amount_non_positive
+    name: Valor total não positivo
+    dimension: validity
+    description: Identifica viagens com valor total menor ou igual a zero.
+    expression: total_amount <= 0
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
+  - id: invalid_trip_chronology
+    name: Cronologia inválida da viagem
+    dimension: validity
+    description: Identifica viagens cujo desembarque ocorreu antes do embarque.
+    expression: dropoff_datetime < pickup_datetime
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
+  - id: trip_duration_over_24_hours
+    name: Duração da viagem superior a 24 horas
+    dimension: validity
+    description: Identifica viagens cuja duração entre embarque e desembarque supera 24 horas.
+    expression: dropoff_datetime > pickup_datetime + INTERVAL 24 HOURS
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold

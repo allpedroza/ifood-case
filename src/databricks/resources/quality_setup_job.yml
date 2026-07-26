@@ -1,0 +1,26 @@
+resources:
+  jobs:
+    quality_setup:
+      name: job_configuracao_qualidade_nyc_tlc
+      description: >-
+        Materializa no Unity Catalog o contrato versionado, as tabelas de
+        resultados e a visão consolidada de qualidade dos dados da NYC TLC.
+      tasks:
+        - task_key: sincronizar_catalogo_regras
+          spark_python_task:
+            python_file: ../../quality/setup_quality.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --quality-schema
+              - ${resources.schemas.quality_schema.name}
+              - --rules-file
+              - ${workspace.file_path}/quality/rules.yml
+          environment_key: default
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml>=6,<7

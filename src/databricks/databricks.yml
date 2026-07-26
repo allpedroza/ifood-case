@@ -26,6 +26,9 @@ variables:
   gold_schema:
     description: Schema das tabelas Gold
     default: tlc_data_gold
+  quality_schema:
+    description: Schema de regras e resultados de qualidade de dados
+    default: tlc_data_quality
   volume_name:
     description: Volume gerenciado para os Parquets originais
     default: nyc_tlc_landing

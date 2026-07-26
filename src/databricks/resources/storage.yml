@@ -28,6 +28,13 @@ resources:
         Camada de consumo da NYC TLC com campos selecionados e governados
         para análise.
 
+    quality_schema:
+      name: ${var.quality_schema}
+      catalog_name: ${var.catalog}
+      comment: >-
+        Repositório governado de regras, execuções e resultados históricos
+        de qualidade dos dados da NYC TLC.
+
   volumes:
     # Identificador interno preservado para manter a identidade do Volume
     # gerenciado já implantado. O nome físico segue o padrão Landing.
