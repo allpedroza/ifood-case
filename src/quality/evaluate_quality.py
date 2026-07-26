@@ -109,7 +109,8 @@ def landing_frame(
     frames = [
         canonical_projection(
             spark.read.parquet(
-                f"{landing_path}/yellow/yellow_tripdata_{month}.parquet"
+                f"{landing_path}/yellow/{month[:4]}/{month[5:7]}/"
+                f"yellow_tripdata_{month}.parquet"
             ),
             "passenger_count",
             "total_amount",
