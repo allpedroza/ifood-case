@@ -44,6 +44,7 @@ GOLD_COLUMNS = [
     ("total_amount", "total_amount", DoubleType()),
     ("tpep_pickup_datetime", "tpep_pickup_datetime", TimestampType()),
     ("tpep_dropoff_datetime", "tpep_dropoff_datetime", TimestampType()),
+    ("_reference_month", "_reference_month", StringType()),
     # ("trip_distance", "trip_distance", DoubleType()),
     # ("RatecodeID", "ratecode_id", DoubleType()),
     # ("store_and_fwd_flag", "store_and_fwd_flag", StringType()),
@@ -63,7 +64,6 @@ GOLD_COLUMNS = [
     # ("_source_file", "_source_file", StringType()),
     # ("_ingested_at", "_ingested_at", TimestampType()),
     # ("_service_type", "_service_type", StringType()),
-    # ("_reference_month", "_reference_month", StringType()),
 ]
 
 TECHNICAL_COLUMN_DESCRIPTIONS = {

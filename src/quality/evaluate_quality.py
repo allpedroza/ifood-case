@@ -290,6 +290,7 @@ def main() -> None:
                 spark,
                 gold_table,
                 F.lit(True),
+                "_reference_month",
             ),
         ),
     ]
