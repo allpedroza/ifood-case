@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 defaults:
   severity: WARN
@@ -49,3 +49,13 @@ rules:
       - bronze
       - silver
       - gold
+
+  - id: pickup_before_reference_month
+    name: Embarque anterior ao mês de referência
+    dimension: consistency
+    description: Identifica viagens cujo embarque ocorreu antes do primeiro dia do mês indicado pelo arquivo de origem.
+    expression: pickup_datetime < to_timestamp(concat(reference_month, '-01'))
+    layers:
+      - landing
+      - bronze
+      - silver

@@ -26,6 +26,7 @@ CANONICAL_COLUMNS = {
     "total_amount": "double",
     "pickup_datetime": "timestamp",
     "dropoff_datetime": "timestamp",
+    "reference_month": "string",
 }
 
 RESULT_SCHEMA = StructType(
@@ -83,6 +84,7 @@ def canonical_projection(
     total_amount: str,
     pickup_datetime: str,
     dropoff_datetime: str,
+    reference_month: str | None = None,
 ) -> DataFrame:
     return frame.select(
         F.col(passenger_count)
@@ -97,6 +99,13 @@ def canonical_projection(
         F.col(dropoff_datetime)
         .cast(CANONICAL_COLUMNS["dropoff_datetime"])
         .alias("dropoff_datetime"),
+        (
+            F.col(reference_month)
+            if reference_month
+            else F.lit(None)
+        )
+        .cast(CANONICAL_COLUMNS["reference_month"])
+        .alias("reference_month"),
     )
 
 
@@ -116,7 +125,7 @@ def landing_frame(
             "total_amount",
             "tpep_pickup_datetime",
             "tpep_dropoff_datetime",
-        )
+        ).withColumn("reference_month", F.lit(month))
         for month in months
     ]
     return reduce(lambda left, right: left.unionByName(right), frames)
@@ -126,6 +135,7 @@ def table_frame(
     spark: SparkSession,
     table_name: str,
     reference_filter,
+    reference_month: str | None = None,
 ) -> DataFrame:
     frame = spark.read.table(table_name).filter(reference_filter)
     pickup = "tpep_pickup_datetime"
@@ -136,6 +146,7 @@ def table_frame(
         "total_amount",
         pickup,
         dropoff,
+        reference_month,
     )
 
 
@@ -259,6 +270,7 @@ def main() -> None:
                 spark,
                 bronze_table,
                 month_filter,
+                "_reference_month",
             ),
         ),
         (
@@ -268,6 +280,7 @@ def main() -> None:
                 spark,
                 silver_table,
                 month_filter,
+                "_reference_month",
             ),
         ),
         (
