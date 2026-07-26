@@ -14,4 +14,3 @@ requests>=2.32,<3.0
 pypdf>=6,<7
 
 # Profiling exploratório da camada Gold no notebook de análise
-fg-data-profiling==4.19.1
