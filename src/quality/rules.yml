@@ -1,4 +1,4 @@
-version: 2
+version: 3
 
 defaults:
   severity: WARN
@@ -55,6 +55,16 @@ rules:
     dimension: consistency
     description: Identifica viagens cujo embarque ocorreu antes do primeiro dia do mês indicado pelo arquivo de origem.
     expression: pickup_datetime < to_timestamp(concat(reference_month, '-01'))
+    layers:
+      - landing
+      - bronze
+      - silver
+
+  - id: trip_datetime_after_reference_month
+    name: Data da viagem posterior ao mês de referência
+    dimension: consistency
+    description: Identifica viagens cujo embarque ou desembarque ocorreu a partir do primeiro dia do mês seguinte ao indicado pelo arquivo de origem.
+    expression: pickup_datetime >= add_months(to_timestamp(concat(reference_month, '-01')), 1) OR dropoff_datetime >= add_months(to_timestamp(concat(reference_month, '-01')), 1)
     layers:
       - landing
       - bronze
