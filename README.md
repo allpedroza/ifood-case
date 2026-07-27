@@ -58,27 +58,154 @@ Edition clássico. Nesses ambientes faltam os serviços gerenciados usados pelo
 Bundle. O `requirements.txt` permite editar, inspecionar Parquets e validar
 partes isoladas do código; ele não substitui o runtime do Databricks.
 
-## Autenticação no Databricks Free
+## Como configurar e executar no Databricks Free
 
-O Bundle não fixa host, profile ou SQL Warehouse. Crie um profile para o
-workspace em que o projeto será implantado:
+Este roteiro parte de uma conta Databricks Free sem recursos do projeto. O
+Bundle não fixa workspace, profile ou SQL Warehouse, por isso os mesmos
+arquivos podem ser implantados em outra conta.
+
+### 1. Criar a conta e o catálogo
+
+Crie uma conta no Databricks Free e abra o workspace. Na interface:
+
+1. acesse `Catalog`;
+2. selecione `Create catalog`;
+3. informe `case_ifood`;
+4. escolha o tipo `Standard`;
+5. mantenha `Default Storage`;
+6. conclua a criação.
+
+O catálogo precisa existir antes do deploy. O Bundle cria os schemas, o Volume
+e os demais recursos dentro dele. Uma pasta chamada `case_ifood` em
+`Workspace` não substitui o catálogo do Unity Catalog.
+
+### 2. Identificar o SQL Warehouse
+
+Abra `SQL Warehouses` e confirme que existe um warehouse serverless, como o
+`Serverless Starter Warehouse`. O ID aparece na URL do warehouse e também pode
+ser consultado pela CLI depois da autenticação:
 
 ```bash
+databricks warehouses list --profile <PROFILE>
+```
+
+Guarde o ID como `<WAREHOUSE_ID>`. O repositório não fornece um valor padrão
+porque esse identificador pertence ao workspace de destino.
+
+### 3. Clonar o repositório e autenticar a CLI
+
+Tenha `git` e a Databricks CLI instalados. Em um diretório de trabalho:
+
+```bash
+git clone https://github.com/allpedroza/ifood-case.git
+cd ifood-case
+
 databricks auth login \
   --host <WORKSPACE_URL> \
   --profile <PROFILE>
 ```
 
-Antes da primeira implantação, o catálogo `case_ifood` deve existir no Unity
-Catalog. No Databricks Free, crie-o pela interface como um catálogo `Standard`
-usando `Default Storage`. O Bundle cria os schemas e o Volume dentro desse
-catálogo, mas não cria o catálogo.
+Use apenas o host do workspace em `<WORKSPACE_URL>`, por exemplo
+`https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`, sem o caminho `/browse` e
+sem o parâmetro `o`.
 
-Confirme a identidade e o host antes de qualquer operação:
+Confirme a identidade, o host e o catálogo antes de criar recursos:
 
 ```bash
 databricks auth describe --profile <PROFILE>
+databricks current-user me --profile <PROFILE>
+databricks catalogs get case_ifood --profile <PROFILE>
 ```
+
+### 4. Validar e implantar o Bundle
+
+Execute os comandos a partir da pasta que contém `databricks.yml`:
+
+```bash
+cd src/databricks
+
+databricks bundle validate \
+  -t free \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+
+databricks bundle deploy \
+  -t free \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+```
+
+O deploy cria cinco schemas, um Volume, três Jobs, uma Pipeline Lakeflow e um
+dashboard. Ele não inicia a ingestão e mantém o agendamento mensal pausado.
+
+### 5. Executar a primeira carga
+
+Primeiro materialize o catálogo de regras. Depois execute a carga padrão do
+case, limitada a janeiro até maio de 2023:
+
+```bash
+databricks bundle run quality_setup \
+  -t free \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+
+databricks bundle run ingestion \
+  -t free \
+  --params inicio=2023-01,fim=2023-05 \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+```
+
+O Job de ingestão baixa os arquivos para a Landing, gera os contratos,
+atualiza Bronze, Silver e Gold e executa as regras de qualidade. Não inicie
+`medallion` em paralelo, pois uma Pipeline aceita somente um update ativo.
+
+### 6. Conferir a implantação
+
+Liste os recursos gerenciados pelo Bundle:
+
+```bash
+databricks bundle summary \
+  -t free \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+```
+
+Na interface, acesse `Catalog > case_ifood`. Ao final da primeira carga devem
+existir:
+
+- `tlc_data_landing`, com o Volume `nyc_tlc_landing`;
+- `tlc_data_bronze`, com as quatro tabelas de viagens e as tabelas de
+  metadados;
+- `tlc_data_silver`, com as viagens padronizadas;
+- `tlc_data_gold`, com as duas tabelas de consumo;
+- `tlc_data_quality`, com regras, resultados e views de monitoramento.
+
+Uma conferência rápida pode ser feita no SQL Editor:
+
+```sql
+SELECT
+  MIN(_reference_month) AS mes_inicial,
+  MAX(_reference_month) AS mes_final,
+  COUNT(*) AS registros
+FROM case_ifood.tlc_data_gold.gold_yellow_trips_consumption;
+```
+
+O resultado esperado cobre `2023-01` até `2023-05`. As contagens podem mudar
+se a NYC TLC republicar os arquivos.
+
+### Problemas de conectividade externa
+
+O Job serverless precisa resolver e acessar os domínios oficiais
+`home4.nyc.gov` e `d37ci6vzurychx.cloudfront.net`. Se o log apresentar
+`Temporary failure in name resolution`, o problema ocorre antes da
+transformação e deve ser tratado como conectividade do workspace.
+
+Evite iniciar várias execuções enquanto o DNS estiver indisponível. Em um
+teste de infraestrutura, os arquivos oficiais podem ser enviados ao Volume
+com `databricks fs cp` e o pipeline pode ser executado depois. Esse
+procedimento contorna somente a extração e não representa o fluxo operacional
+normal do projeto.
 
 ## Recursos implantados
 
@@ -320,25 +447,10 @@ continua registrado como de-para explícito.
 
 ## Primeira implantação
 
+O roteiro completo está em
+[Como configurar e executar no Databricks Free](#como-configurar-e-executar-no-databricks-free).
 O deploy cria ou atualiza os recursos, mas não executa os Jobs. Na primeira
-implantação, materialize o contrato de qualidade antes de executar a ingestão:
-
-```bash
-cd src/databricks
-databricks bundle validate \
-  --profile <PROFILE> \
-  --var="sql_warehouse_id=<WAREHOUSE_ID>"
-databricks bundle deploy \
-  --profile <PROFILE> \
-  --var="sql_warehouse_id=<WAREHOUSE_ID>"
-databricks bundle run quality_setup \
-  --profile <PROFILE> \
-  --var="sql_warehouse_id=<WAREHOUSE_ID>"
-databricks bundle run ingestion \
-  --params inicio=2023-01,fim=2023-05 \
-  --profile <PROFILE> \
-  --var="sql_warehouse_id=<WAREHOUSE_ID>"
-```
+implantação, `quality_setup` deve terminar antes de `ingestion`.
 
 O Job `ingestion` encadeia:
 
