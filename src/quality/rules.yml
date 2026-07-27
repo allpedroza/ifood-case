@@ -1,4 +1,4 @@
-version: 4
+version: 5
 
 defaults:
   severity: WARN
@@ -6,6 +6,39 @@ defaults:
   active: true
 
 rules:
+  - id: vendor_id_null
+    name: Vendor não preenchido
+    dimension: completeness
+    description: Identifica viagens sem o identificador do provedor TPEP.
+    expression: vendor_id IS NULL
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
+  - id: passenger_count_null
+    name: Quantidade de passageiros não preenchida
+    dimension: completeness
+    description: Identifica viagens sem a quantidade de passageiros informada.
+    expression: passenger_count IS NULL
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
+  - id: total_amount_null
+    name: Valor total não preenchido
+    dimension: completeness
+    description: Identifica viagens sem o valor total informado.
+    expression: total_amount IS NULL
+    layers:
+      - landing
+      - bronze
+      - silver
+      - gold
+
   - id: passenger_count_non_positive
     name: Quantidade de passageiros não positiva
     dimension: validity

@@ -23,6 +23,7 @@ from pyspark.sql.types import (
 
 
 CANONICAL_COLUMNS = {
+    "vendor_id": "long",
     "passenger_count": "double",
     "total_amount": "double",
     "pickup_datetime": "timestamp",
@@ -81,6 +82,7 @@ def month_sequence(start_month: str, end_month: str) -> list[str]:
 
 def canonical_projection(
     frame: DataFrame,
+    vendor_id: str,
     passenger_count: str,
     total_amount: str,
     pickup_datetime: str,
@@ -88,6 +90,9 @@ def canonical_projection(
     reference_month: str | None = None,
 ) -> DataFrame:
     return frame.select(
+        F.col(vendor_id)
+        .cast(CANONICAL_COLUMNS["vendor_id"])
+        .alias("vendor_id"),
         F.col(passenger_count)
         .cast(CANONICAL_COLUMNS["passenger_count"])
         .alias("passenger_count"),
@@ -122,6 +127,7 @@ def landing_frame(
                 f"{landing_path}/yellow/{month[:4]}/{month[5:7]}/"
                 f"yellow_tripdata_{month}.parquet"
             ),
+            "VendorID",
             "passenger_count",
             "total_amount",
             "tpep_pickup_datetime",
@@ -136,6 +142,7 @@ def table_frame(
     spark: SparkSession,
     table_name: str,
     reference_filter,
+    vendor_id: str,
     reference_month: str | None = None,
 ) -> DataFrame:
     frame = spark.read.table(table_name).filter(reference_filter)
@@ -143,6 +150,7 @@ def table_frame(
     dropoff = "tpep_dropoff_datetime"
     return canonical_projection(
         frame,
+        vendor_id,
         "passenger_count",
         "total_amount",
         pickup,
@@ -222,8 +230,8 @@ def evaluate_layer(
                 "maximum_violation_percentage": maximum,
                 "status": status,
                 "details": (
-                    "Registros nulos não são violações desta regra; "
-                    "serão tratados separadamente como completude."
+                    "A condição versionada no catálogo define os registros "
+                    "contabilizados como violação."
                 ),
             }
         )
@@ -271,6 +279,7 @@ def main() -> None:
                 spark,
                 bronze_table,
                 month_filter,
+                "VendorID",
                 "_reference_month",
             ),
         ),
@@ -281,6 +290,7 @@ def main() -> None:
                 spark,
                 silver_table,
                 month_filter,
+                "vendor_id",
                 "_reference_month",
             ),
         ),
@@ -291,6 +301,7 @@ def main() -> None:
                 spark,
                 gold_table,
                 F.lit(True),
+                "VendorID",
                 "_reference_month",
             ),
         ),
