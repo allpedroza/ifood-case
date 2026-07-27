@@ -180,10 +180,17 @@ def schema_bronze(tipo: str):
     )
 
 
-def valor_canonico(nome: str, metadado: dict):
+def valor_canonico(
+    nome: str,
+    metadado: dict,
+    colunas_fisicas: dict[str, str],
+):
     """Normaliza o valor direto ou resgatado para o tipo do contrato."""
     tipo_destino = TYPE_MAP[metadado["type"]]
-    candidatos = [F.col(nome).cast(tipo_destino)]
+    candidatos = []
+    coluna_fisica = colunas_fisicas.get(nome.lower())
+    if coluna_fisica is not None:
+        candidatos.append(F.col(coluna_fisica).cast(tipo_destino))
     for chave_json in (nome, *RESCUED_COLUMN_ALIASES.get(nome, ())):
         candidatos.append(
             F.element_at(
@@ -206,8 +213,9 @@ def ler_parquets(tipo: str):
             F.from_json(F.col("_rescued_data"), RESCUED_MAP_TYPE),
         )
     )
+    colunas_fisicas = {nome.lower(): nome for nome in df.columns}
     colunas_contrato = [
-        valor_canonico(nome, metadado)
+        valor_canonico(nome, metadado, colunas_fisicas)
         for nome, metadado in CONTRATOS[tipo]["columns"].items()
     ]
     return df.select(
