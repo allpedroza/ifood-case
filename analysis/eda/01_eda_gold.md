@@ -1,8 +1,7 @@
 # EDA — NYC TLC Yellow Taxi
 
 Este documento acompanha o notebook
-[`01_eda_gold.sql`](01_eda_gold.sql) e registra os resultados obtidos no
-Databricks em 27 de julho de 2026.
+[`01_eda_gold.sql`](01_eda_gold.sql) e registra os resultados obtidos em 27 de julho de 2026.
 
 Fonte principal:
 `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`.
