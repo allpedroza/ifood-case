@@ -1,29 +1,25 @@
 # Respostas analíticas: NYC TLC
 
-Este documento acompanha o notebook
-[`01_respostas_analiticas.sql`](01_respostas_analiticas.sql) e registra os
-resultados obtidos no Databricks em 27 de julho de 2026.
+Os resultados vieram do notebook
+[`01_respostas_analiticas.sql`](01_respostas_analiticas.sql), executado no
+Databricks em 27 de julho de 2026.
 
 Fontes:
 
 - `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`;
 - `case_ifood.tlc_data_gold.gold_taxi_passengers_by_hour`.
 
-Os valores representam um snapshot das tabelas Gold no momento da execução.
-Uma recomputação da pipeline pode alterar os resultados caso os arquivos de
-origem ou as regras do produto de dados sejam atualizados. O SQL versionado é a
-fonte executável; este Markdown é o registro interpretativo das respostas.
+Este é um recorte das tabelas Gold naquela execução. Se a origem ou as regras do
+produto mudarem, o SQL deve ser executado novamente. O Markdown registra a
+leitura dos resultados, enquanto o arquivo SQL continua sendo a fonte
+executável.
 
 ## 1. Média de valor total por mês para Yellow Taxi
-
-### Premissa
 
 Cada registro representa uma viagem. A métrica é a média de `total_amount` por
 viagem em cada mês, e não a soma da receita da frota. O `AVG` desconsidera
 valores nulos e preserva valores negativos existentes na fonte, pois eles podem
 representar ajustes operacionais.
-
-### Resultado
 
 | Mês | Média de `total_amount` | Viagens com valor informado |
 |---|---:|---:|
@@ -33,15 +29,11 @@ representar ajustes operacionais.
 | 2023-04 | 28,27 | 3.288.248 |
 | 2023-05 | 28,96 | 3.513.645 |
 
-### Resposta
-
 Entre janeiro e maio de 2023, a média mensal por viagem variou de 26,90,
 em fevereiro, a 28,96, em maio. Depois da redução observada em fevereiro,
 a média aumentou em março, abril e maio.
 
 ## 2. Média de passageiros por hora no mês de maio
-
-### Premissa
 
 "Todos os táxis da frota" é interpretado no sentido regulatório da NYC TLC:
 Yellow Taxi e Green Taxi. FHV e High Volume FHV não são classificados como
@@ -51,8 +43,6 @@ A média considera somente viagens com `passenger_count > 0`. Valores nulos,
 iguais a zero ou negativos são excluídos do denominador e apresentados como
 viagens descartadas. Yellow utiliza `tpep_pickup_datetime` e Green utiliza
 `lpep_pickup_datetime`; ambos são harmonizados como horário de embarque.
-
-### Resultado
 
 | Hora | Média de passageiros | Viagens consideradas | Yellow | Green | Descartadas |
 |---:|---:|---:|---:|---:|---:|
@@ -81,8 +71,6 @@ viagens descartadas. Yellow utiliza `tpep_pickup_datetime` e Green utiliza
 | 22 | 1,43 | 183.506 | 181.332 | 2.174 | 7.842 |
 | 23 | 1,42 | 143.273 | 141.649 | 1.624 | 6.632 |
 
-### Resposta
-
 A média permaneceu próxima de um a dois passageiros durante todo o dia,
 variando de 1,26 passageiro às 06h a 1,45 passageiro às 02h e às 03h.
 O maior volume válido ocorreu às 18h, com 245.268 viagens consideradas.
@@ -90,7 +78,7 @@ Em todas as horas, Yellow representou a maior parte das viagens, enquanto
 Green permaneceu incluído para preservar o conceito regulatório de todos os
 táxis.
 
-## Como reproduzir e validar? 
+## Reproduzir os resultados
 
 Para atualizar este documento, execute todas as células de
 `01_respostas_analiticas.sql` no Databricks SQL após a atualização da pipeline

@@ -202,21 +202,62 @@ As branches usam essa correção como ponto de separação:
   implantável;
 - `main` é a fonte vigente para deploy no Databricks.
 
-### Hipóteses avaliadas e consequências
+### Notas da investigação
 
-| Hipótese investigada | Evidência e conclusão | Consequência no projeto |
-|---|---|---|
-| `VendorID` e `passenger_count` totalmente nulos indicavam ausência desses campos nos arquivos oficiais. | O primeiro profiling apresentou ambos como 100% nulos. A inspeção entre camadas mostrou que valores declarados com variação de schema físico podiam estar em `_rescued_data`. Após a recuperação canônica, `VendorID` passou a ser preenchido; parte de `passenger_count` continuou nula na própria origem. A hipótese foi rejeitada para `VendorID` e parcialmente confirmada para `passenger_count`. | A Bronze passou a recuperar e converter deterministicamente valores de `_rescued_data`. Esse bugfix separa as branches `original` e `main`. Também foram criadas regras de completude para `VendorID`, `passenger_count` e `total_amount` em todas as camadas. Nulos legítimos de `passenger_count` são preservados e monitorados. |
-| Datas de viagem em 2001 significavam que a Silver havia processado arquivos fora da janela de janeiro a maio de 2023. | A Silver limita arquivos por `_reference_month`, extraído do nome do Parquet. Um arquivo de 2023 pode conter timestamps de viagem fora do seu mês de referência; portanto, não houve vazamento de partições antigas para a Silver. A errata apresentada, referente a arquivos de 2015 a 2017, não explica registros dos arquivos de 2023. | `_reference_month` foi preservado até a Gold para rastreabilidade. Foram criadas as regras `pickup_before_reference_month` e `trip_datetime_after_reference_month`, aplicadas da Landing à Gold. Os registros permanecem disponíveis para auditoria em vez de serem descartados silenciosamente. |
-| Todo `passenger_count` nulo ou igual a zero deveria ser convertido para zero ou removido do pipeline. | Nulo significa quantidade não informada e não é semanticamente equivalente a zero. Valores não positivos também não representam uma quantidade válida para calcular a média solicitada, mas devem continuar rastreáveis. | Os dados detalhados são preservados. A regra `passenger_count_null` mede completude e `passenger_count_non_positive` mede validade. Apenas `gold_taxi_passengers_by_hour` exclui nulos e valores menores ou iguais a zero do denominador, expondo também `trips_discarded`. |
-| `total_amount <= 0` era necessariamente erro técnico e deveria ser eliminado. | Valores negativos ou iguais a zero podem representar ajustes, estornos ou registros operacionais da fonte. Não foi encontrada evidência suficiente para reescrevê-los. | A consulta mensal preserva esses valores e documenta a premissa. `total_amount_null` e `total_amount_non_positive` monitoram completude e validade sem alterar o dado original. |
-| Desembarque anterior ao embarque ou duração superior a 24 horas poderia ser uma regra normal da operação. | Os metadados definem os campos como início e fim da mesma viagem e não oferecem justificativa semântica para essas ocorrências. Elas foram tratadas como anomalias observáveis, não como motivo automático de exclusão. | Foram criadas as regras `invalid_trip_chronology` e `trip_duration_over_24_hours` em Landing, Bronze, Silver e Gold. |
-| A Gold obrigatória deveria combinar todos os datasets TLC. | Os nomes exigidos `tpep_pickup_datetime` e `tpep_dropoff_datetime` pertencem ao contrato Yellow. Green usa campos `lpep`, e FHV/HVFHV possuem outra semântica e outro conjunto de atributos. | `gold_yellow_trips_consumption` permanece Yellow-only e atende literalmente ao contrato de consumo, sem renomear campos de serviços diferentes para forçar compatibilidade. |
-| "Todos os táxis da frota" na pergunta de passageiros significava somente Yellow Taxi. | A redação da primeira pergunta especifica Yellow, enquanto a segunda diz todos os táxis. No contexto regulatório da NYC TLC, Yellow e Green são táxis; FHV e High Volume FHV são veículos for-hire e não fornecem `passenger_count`. | Foi criada `gold_taxi_passengers_by_hour`, unindo Yellow e Green com harmonização dos timestamps `tpep` e `lpep`. A tabela expõe contagens por serviço, serviços participantes, arquivos de origem e ingestão mais recente. |
-| A ausência dos meses mais recentes indicava necessariamente falha do extrator. | A publicação dos arquivos TLC possui atraso e categorias diferentes podem ficar disponíveis em momentos distintos. Entretanto, lacunas em 2024 ou 2025 não poderiam ser explicadas por esse atraso recente. | O extrator percorre inclusivamente todos os meses entre `inicio` e `fim`, atravessa viradas de ano, ignora arquivos já íntegros, interrompe diante de lacuna histórica e tolera `403/404` apenas na janela recente. Com `fim=auto`, tenta até o mês anterior. |
-| Descrições traduzidas ou produzidas manualmente seriam equivalentes ao contrato oficial. | Tradução e redação manual introduziam interpretação não rastreável. O slug `hvfhs` do PDF também difere do slug `fhvhv` dos dados mensais. | Os contratos são extraídos deterministicamente dos PDFs em inglês, com checksum SHA-256. Bronze, Silver e Gold herdam essas descrições; o de-para `hvfhs -> fhvhv` é explícito. |
+Quando rodei o primeiro profiling, `VendorID` e `passenger_count` apareceram
+100% nulos. Minha primeira suspeita foi a fonte, mas os Parquets ainda
+continham parte desses valores. O problema estava na leitura: diferenças de
+nome ou tipo levavam campos para `_rescued_data`, e a Bronze não os recuperava.
+Esse achado deu origem ao bugfix que separa `original` de `main`. Depois do
+reprocessamento, `VendorID` passou a ser preenchido. Os nulos que restaram em
+`passenger_count` já estavam na origem, por isso entraram no monitoramento de
+completude em vez de receber uma imputação.
 
-### Limites conhecidos
+As datas de 2001 levantaram outra suspeita. Parecia que a Silver havia deixado
+entrar arquivos fora de janeiro a maio de 2023. A checagem de
+`_reference_month` mostrou outra coisa: os arquivos eram de 2023, mas alguns
+registros traziam timestamps antigos. A errata da TLC que consultei trata de
+arquivos de 2015 a 2017 e não explica esse caso. Mantive os registros e levei
+`_reference_month` até a Gold. As regras
+`pickup_before_reference_month` e `trip_datetime_after_reference_month`
+registram a divergência.
+
+Também considerei o que fazer com `passenger_count` nulo ou igual a zero. Nulo
+é ausência de informação; zero é um valor informado. Tratar os dois como a
+mesma coisa esconderia um problema de completude. A tabela detalhada mantém os
+dois casos. O agregado `gold_taxi_passengers_by_hour` usa apenas valores
+positivos na média e informa quantas viagens foram descartadas.
+
+Os valores não positivos de `total_amount` ficaram na base. Eles podem ser
+ajustes ou estornos, e os documentos consultados não sustentam uma correção
+automática. A EDA mostra a conta original e uma análise de sensibilidade sem
+negativos. A regra `total_amount_non_positive` permite acompanhar os dois
+cenários sem reescrever a fonte.
+
+Para cronologia, adotei o mesmo cuidado. Desembarque anterior ao embarque e
+duração acima de 24 horas não têm justificativa nos metadados, mas isso não
+basta para apagar a viagem. As regras `invalid_trip_chronology` e
+`trip_duration_over_24_hours` sinalizam esses registros nas quatro camadas.
+
+A modelagem da Gold exigiu duas leituras do enunciado. A tabela obrigatória
+continua restrita a Yellow porque os nomes `tpep_pickup_datetime` e
+`tpep_dropoff_datetime` pertencem a esse contrato. Já a pergunta sobre "todos
+os táxis" inclui Yellow e Green no sentido regulatório. FHV e High Volume FHV
+ficam fora porque não são táxis e não fornecem `passenger_count`. Essa diferença
+de escopo gerou `gold_taxi_passengers_by_hour`.
+
+Nem toda ausência recente é falha de extração. A TLC publica categorias em
+ritmos diferentes, então o extrator tolera `403` e `404` na cauda mais recente.
+Esse atraso não explicava os buracos de 2024 e 2025 que apareceram durante os
+testes. Por isso o loop percorre todos os meses entre `inicio` e `fim`, cruza a
+virada de ano e para no primeiro arquivo histórico ausente.
+
+Por fim, descartei a manutenção manual das descrições. Os contratos são gerados
+dos PDFs em inglês, com checksum SHA-256. Isso evita que uma tradução passe a
+parecer documentação oficial. O caso `hvfhs` no PDF e `fhvhv` nos arquivos
+continua registrado como de-para explícito.
+
+### O que ficou em aberto
 
 - O profiling detalhado do dashboard concentra-se na Gold Yellow; a segunda
   Gold é um agregado especializado, cuja composição é observada pelas métricas

@@ -1,7 +1,7 @@
 # EDA: NYC TLC Yellow Taxi
 
-Este documento acompanha o notebook
-[`01_eda_gold.sql`](01_eda_gold.sql) e registra os resultados obtidos em 27 de julho de 2026.
+Os resultados vieram do notebook [`01_eda_gold.sql`](01_eda_gold.sql),
+executado em 27 de julho de 2026.
 
 Fonte: `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`.
 
@@ -10,8 +10,8 @@ O período analisado compreende os arquivos de referência de janeiro a maio de
 viagem, para que registros temporalmente anômalos continuem associados ao
 arquivo que os forneceu.
 
-Os valores abaixo são um snapshot. O notebook SQL é a fonte executável e deve
-ser executado novamente após mudanças nos dados ou na pipeline.
+Os números refletem aquela execução. O notebook deve ser executado novamente
+quando os dados ou a pipeline mudarem.
 
 ## 1. Evolução mensal da quantidade de corridas
 
@@ -208,7 +208,7 @@ de valor, comportamento compatível com timestamps extremos ou outras
 anomalias. Ela deve ser investigada separadamente e não interpretada como uma
 relação operacional linear.
 
-## Como reproduzir e validar?
+## Reproduzir os resultados
 
 Para atualizar o snapshot:
 
