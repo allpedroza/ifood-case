@@ -54,27 +54,29 @@
       "name": "rule_matrix",
       "displayName": "Violações por regra e camada",
       "queryLines": [
-        "SELECT layer, rule_name, violation_count, violation_percentage, status FROM case_ifood.tlc_data_quality.dq_dashboard_results WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
-      ]
-    },
-    {
-      "name": "success_history",
-      "displayName": "Histórico de sucesso",
-      "queryLines": [
-        "SELECT execution_date, layer, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success ORDER BY execution_date, layer"
-      ]
-    },
-    {
-      "name": "rules_by_dimension",
-      "displayName": "Regras por dimensão",
-      "queryLines": [
         "SELECT\n",
-        "  dimension,\n",
-        "  COUNT(DISTINCT rule_name) as rule_count\n",
+        "  CASE r.layer\n",
+        "    WHEN 'landing' THEN '1. landing'\n",
+        "    WHEN 'bronze' THEN '2. bronze'\n",
+        "    WHEN 'silver' THEN '3. silver'\n",
+        "    WHEN 'gold' THEN '4. ouro'\n",
+        "    ELSE r.layer\n",
+        "  END as layer,\n",
+        "  r.dimension,\n",
+        "  r.rule_name,\n",
+        "  COALESCE(\n",
+        "    REGEXP_EXTRACT(c.expression, '^\\\\s*([a-zA-Z_][a-zA-Z0-9_]*)', 1),\n",
+        "    r.table_name\n",
+        "  ) as target_column,\n",
+        "  MAX(r.violation_count) as violation_count,\n",
+        "  MAX(r.violation_percentage) as violation_percentage,\n",
+        "  MAX(r.status) as status\n",
         "FROM\n",
-        "  case_ifood.tlc_data_quality.dq_dashboard_results\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_results r\n",
+        "    LEFT JOIN case_ifood.tlc_data_quality.dq_rule_catalog c\n",
+        "      ON r.rule_id = c.rule_id\n",
         "WHERE\n",
-        "  execution_id\n",
+        "  r.execution_id\n",
         "    = (\n",
         "      SELECT\n",
         "        execution_id\n",
@@ -85,9 +87,98 @@
         "      LIMIT 1\n",
         "    )\n",
         "GROUP BY\n",
-        "  dimension\n",
+        "  r.layer,\n",
+        "  r.dimension,\n",
+        "  r.rule_name,\n",
+        "  r.table_name,\n",
+        "  c.expression"
+      ]
+    },
+    {
+      "name": "success_history",
+      "displayName": "Histórico de sucesso por camada",
+      "queryLines": [
+        "SELECT\n",
+        "  execution_date,\n",
+        "  CASE layer\n",
+        "    WHEN 'landing' THEN '1. landing'\n",
+        "    WHEN 'bronze' THEN '2. bronze'\n",
+        "    WHEN 'silver' THEN '3. silver'\n",
+        "    WHEN 'gold' THEN '4. ouro'\n",
+        "    ELSE layer\n",
+        "  END as layer,\n",
+        "  success_percentage\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_table_success\n",
+        "WHERE\n",
+        "  execution_id IN (\n",
+        "    SELECT\n",
+        "      execution_id\n",
+        "    FROM\n",
+        "      case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "    ORDER BY\n",
+        "      executed_at DESC\n",
+        "    LIMIT 30\n",
+        "  )\n",
         "ORDER BY\n",
-        "  rule_count DESC"
+        "  execution_date,\n",
+        "  layer"
+      ]
+    },
+    {
+      "name": "rules_by_dimension",
+      "displayName": "Regras por dimensão",
+      "queryLines": [
+        "WITH rule_counts AS (\n",
+        "  SELECT\n",
+        "    dimension,\n",
+        "    COUNT(DISTINCT rule_name) as rule_count\n",
+        "  FROM\n",
+        "    case_ifood.tlc_data_quality.dq_dashboard_results\n",
+        "  WHERE\n",
+        "    execution_id\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          execution_id\n",
+        "        FROM\n",
+        "          case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "        ORDER BY\n",
+        "          executed_at DESC\n",
+        "        LIMIT 1\n",
+        "      )\n",
+        "  GROUP BY\n",
+        "    dimension\n",
+        "),\n",
+        "dimension_aggregated_success AS (\n",
+        "  SELECT\n",
+        "    dimension,\n",
+        "    AVG(success_percentage) as avg_success_percentage\n",
+        "  FROM\n",
+        "    case_ifood.tlc_data_quality.dq_dashboard_dimension_success\n",
+        "  WHERE\n",
+        "    execution_id\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          execution_id\n",
+        "        FROM\n",
+        "          case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "        ORDER BY\n",
+        "          executed_at DESC\n",
+        "        LIMIT 1\n",
+        "      )\n",
+        "  GROUP BY\n",
+        "    dimension\n",
+        ")\n",
+        "SELECT\n",
+        "  rc.dimension,\n",
+        "  rc.rule_count,\n",
+        "  COALESCE(das.avg_success_percentage, 0) as success_percentage\n",
+        "FROM\n",
+        "  rule_counts rc\n",
+        "    LEFT JOIN dimension_aggregated_success das\n",
+        "      ON rc.dimension = das.dimension\n",
+        "ORDER BY\n",
+        "  rc.rule_count DESC"
       ]
     },
     {
@@ -156,6 +247,468 @@
         "WHERE\n",
         "  active = true"
       ]
+    },
+    {
+      "name": "table_success_with_dimensions",
+      "displayName": "Sucesso por tabela com dimensões",
+      "queryLines": [
+        "WITH layer_success AS (\n",
+        "  SELECT\n",
+        "    CASE layer\n",
+        "      WHEN 'landing' THEN '1. landing'\n",
+        "      WHEN 'bronze' THEN '2. bronze'\n",
+        "      WHEN 'silver' THEN '3. silver'\n",
+        "      WHEN 'gold' THEN '4. gold'\n",
+        "      ELSE layer\n",
+        "    END as layer,\n",
+        "    success_percentage as layer_success\n",
+        "  FROM\n",
+        "    case_ifood.tlc_data_quality.dq_dashboard_table_success\n",
+        "  WHERE\n",
+        "    execution_id\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          execution_id\n",
+        "        FROM\n",
+        "          case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "        ORDER BY\n",
+        "          executed_at DESC\n",
+        "        LIMIT 1\n",
+        "      )\n",
+        "),\n",
+        "dimension_success AS (\n",
+        "  SELECT\n",
+        "    CASE layer\n",
+        "      WHEN 'landing' THEN '1. landing'\n",
+        "      WHEN 'bronze' THEN '2. bronze'\n",
+        "      WHEN 'silver' THEN '3. silver'\n",
+        "      WHEN 'gold' THEN '4. gold'\n",
+        "      ELSE layer\n",
+        "    END as layer,\n",
+        "    dimension,\n",
+        "    success_percentage as dimension_success\n",
+        "  FROM\n",
+        "    case_ifood.tlc_data_quality.dq_dashboard_dimension_success\n",
+        "  WHERE\n",
+        "    execution_id\n",
+        "      = (\n",
+        "        SELECT\n",
+        "          execution_id\n",
+        "        FROM\n",
+        "          case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "        ORDER BY\n",
+        "          executed_at DESC\n",
+        "        LIMIT 1\n",
+        "      )\n",
+        ")\n",
+        "SELECT\n",
+        "  ls.layer,\n",
+        "  ls.layer_success as success_percentage,\n",
+        "  MAX(\n",
+        "    CASE\n",
+        "      WHEN ds.dimension = 'validity' THEN ds.dimension_success\n",
+        "    END\n",
+        "  ) as validity_success,\n",
+        "  MAX(\n",
+        "    CASE\n",
+        "      WHEN ds.dimension = 'consistency' THEN ds.dimension_success\n",
+        "    END\n",
+        "  ) as consistency_success,\n",
+        "  MAX(\n",
+        "    CASE\n",
+        "      WHEN ds.dimension = 'completeness' THEN ds.dimension_success\n",
+        "    END\n",
+        "  ) as completeness_success\n",
+        "FROM\n",
+        "  layer_success ls\n",
+        "    LEFT JOIN dimension_success ds\n",
+        "      ON ls.layer = ds.layer\n",
+        "GROUP BY\n",
+        "  ls.layer,\n",
+        "  ls.layer_success\n",
+        "ORDER BY\n",
+        "  ls.layer"
+      ]
+    },
+    {
+      "name": "gold_tables_summary",
+      "displayName": "Resumo tabelas Gold",
+      "queryLines": [
+        "SELECT\n",
+        "  'gold_yellow_trips_consumption' as table_name,\n",
+        "  'MATERIALIZED_VIEW' as table_type,\n",
+        "  9 as column_count,\n",
+        "  'Consumption-ready Yellow Taxi trips from 2023-01 through 2023-05, with metadata inherited from the deterministic official contract.' as description\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'gold_taxi_passengers_by_hour',\n",
+        "  'MATERIALIZED_VIEW',\n",
+        "  10,\n",
+        "  'Average passengers by pickup hour for Yellow and Green Taxi trips in 2023-05. FHV and High Volume FHV are excluded because they are not taxi services and do not provide passenger_count.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'gold_yellow_trips_consumption_drift_metrics',\n",
+        "  'MANAGED',\n",
+        "  22,\n",
+        "  'Data drift metrics for monitoring gold_yellow_trips_consumption table'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'gold_yellow_trips_consumption_profile_metrics',\n",
+        "  'MANAGED',\n",
+        "  29,\n",
+        "  'Data profile metrics for monitoring gold_yellow_trips_consumption table'"
+      ]
+    },
+    {
+      "name": "gold_passengers_by_hour_columns",
+      "displayName": "Colunas gold_taxi_passengers_by_hour",
+      "queryLines": [
+        "SELECT\n",
+        "  'hour_of_day' as column_name,\n",
+        "  'int' as data_type,\n",
+        "  'Hour of pickup, from 0 through 23.' as description\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'average_passenger_count',\n",
+        "  'double',\n",
+        "  'Average positive passenger count across Yellow and Green Taxi trips.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'trips_considered',\n",
+        "  'bigint',\n",
+        "  'Trips with passenger_count greater than zero included in the average.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'yellow_trips_considered',\n",
+        "  'bigint',\n",
+        "  'Yellow Taxi trips included in the average.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'green_trips_considered',\n",
+        "  'bigint',\n",
+        "  'Green Taxi trips included in the average.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'trips_discarded',\n",
+        "  'bigint',\n",
+        "  'Trips excluded because passenger_count is null or less than or equal to zero.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_reference_month',\n",
+        "  'string',\n",
+        "  'Reference month of the aggregated trips.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_service_types',\n",
+        "  'array<string>',\n",
+        "  'NYC TLC service categories included in the aggregate.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_source_files',\n",
+        "  'array<string>',\n",
+        "  'Landing files that contributed to the aggregate.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_latest_source_ingested_at',\n",
+        "  'timestamp',\n",
+        "  'Most recent Bronze ingestion timestamp among the contributing trips.'"
+      ]
+    },
+    {
+      "name": "gold_yellow_trips_columns",
+      "displayName": "Colunas gold_yellow_trips_consumption",
+      "queryLines": [
+        "SELECT\n",
+        "  'VendorID' as column_name,\n",
+        "  'bigint' as data_type,\n",
+        "  'A code indicating the TPEP provider that provided the record. 1 = Creative Mobile Technologies, LLC 2 = Curb Mobility, LLC 6 = Myle Technologies Inc 7 = Helix' as description\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'passenger_count',\n",
+        "  'double',\n",
+        "  'The number of passengers in the vehicle.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'total_amount',\n",
+        "  'double',\n",
+        "  'The total amount charged to passengers. Does not include cash tips.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'tpep_pickup_datetime',\n",
+        "  'timestamp',\n",
+        "  'The date and time when the meter was engaged.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'tpep_dropoff_datetime',\n",
+        "  'timestamp',\n",
+        "  'The date and time when the meter was disengaged.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_reference_month',\n",
+        "  'string',\n",
+        "  'Mês de referência da viagem.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_source_file',\n",
+        "  'string',\n",
+        "  'Caminho do arquivo que originou o registro na Landing.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_ingested_at',\n",
+        "  'timestamp',\n",
+        "  'Instante em que o registro foi processado na Bronze.'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  '_service_type',\n",
+        "  'string',\n",
+        "  'Categoria de serviço da NYC TLC.'"
+      ]
+    },
+    {
+      "name": "drift_metrics_columns",
+      "displayName": "Colunas drift_metrics",
+      "queryLines": [
+        "SELECT\n",
+        "  'window' as column_name,\n",
+        "  'struct<start:timestamp,end:timestamp>' as data_type,\n",
+        "  'Time window for drift analysis' as description\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'granularity',\n",
+        "  'string',\n",
+        "  'Aggregation granularity'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'column_name',\n",
+        "  'string',\n",
+        "  'Name of the monitored column'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'data_type',\n",
+        "  'string',\n",
+        "  'Data type of the monitored column'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'drift_type',\n",
+        "  'string',\n",
+        "  'Type of drift detected'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'js_distance',\n",
+        "  'double',\n",
+        "  'Jensen-Shannon divergence'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'ks_test',\n",
+        "  'struct<statistic:double,pvalue:double>',\n",
+        "  'Kolmogorov-Smirnov test'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'wasserstein_distance',\n",
+        "  'double',\n",
+        "  'Wasserstein distance'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'population_stability_index',\n",
+        "  'double',\n",
+        "  'PSI for distribution stability'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'chi_squared_test',\n",
+        "  'struct<statistic:double,pvalue:double>',\n",
+        "  'Chi-squared test'"
+      ]
+    },
+    {
+      "name": "profile_metrics_columns",
+      "displayName": "Colunas profile_metrics",
+      "queryLines": [
+        "SELECT\n",
+        "  'window' as column_name,\n",
+        "  'struct<start:timestamp,end:timestamp>' as data_type,\n",
+        "  'Time window for profile metrics' as description\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'column_name',\n",
+        "  'string',\n",
+        "  'Name of the profiled column'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'count',\n",
+        "  'bigint',\n",
+        "  'Total row count'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'data_type',\n",
+        "  'string',\n",
+        "  'Data type of the profiled column'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'num_nulls',\n",
+        "  'bigint',\n",
+        "  'Number of null values'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'avg',\n",
+        "  'double',\n",
+        "  'Average value (numeric columns)'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'min',\n",
+        "  'double',\n",
+        "  'Minimum value'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'max',\n",
+        "  'double',\n",
+        "  'Maximum value'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'stddev',\n",
+        "  'double',\n",
+        "  'Standard deviation'\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'distinct_count',\n",
+        "  'bigint',\n",
+        "  'Number of distinct values'"
+      ]
+    },
+    {
+      "name": "profiling_coverage",
+      "displayName": "Cobertura e estatísticas",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) as total_records,\n",
+        "  MIN(tpep_pickup_datetime) as data_minima,\n",
+        "  MAX(tpep_pickup_datetime) as data_maxima,\n",
+        "  DATEDIFF(MAX(tpep_pickup_datetime), MIN(tpep_pickup_datetime)) as dias_cobertura,\n",
+        "  COUNT(DISTINCT VendorID) as vendors_distintos,\n",
+        "  ROUND(AVG(passenger_count), 2) as media_passageiros,\n",
+        "  ROUND(AVG(total_amount), 2) as media_valor\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption"
+      ]
+    },
+    {
+      "name": "profiling_completeness",
+      "displayName": "Completude por coluna",
+      "queryLines": [
+        "SELECT\n",
+        "  'VendorID' as coluna,\n",
+        "  COUNT(*) as total,\n",
+        "  COUNT(VendorID) as nao_nulos,\n",
+        "  ROUND(100.0 * COUNT(VendorID) / COUNT(*), 2) as pct_completo\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'passenger_count',\n",
+        "  COUNT(*),\n",
+        "  COUNT(passenger_count),\n",
+        "  ROUND(100.0 * COUNT(passenger_count) / COUNT(*), 2)\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'total_amount',\n",
+        "  COUNT(*),\n",
+        "  COUNT(total_amount),\n",
+        "  ROUND(100.0 * COUNT(total_amount) / COUNT(*), 2)\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'tpep_pickup_datetime',\n",
+        "  COUNT(*),\n",
+        "  COUNT(tpep_pickup_datetime),\n",
+        "  ROUND(100.0 * COUNT(tpep_pickup_datetime) / COUNT(*), 2)\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption"
+      ]
+    },
+    {
+      "name": "profiling_distribuicao_hora_pickup",
+      "displayName": "Distribuição Hora Pickup",
+      "queryLines": [
+        "SELECT\n",
+        "  HOUR(tpep_pickup_datetime) as hora,\n",
+        "  COUNT(*) as quantidade,\n",
+        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) as percentual\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "WHERE\n",
+        "  tpep_pickup_datetime IS NOT NULL\n",
+        "GROUP BY\n",
+        "  HOUR(tpep_pickup_datetime)\n",
+        "ORDER BY\n",
+        "  hora"
+      ]
+    },
+    {
+      "name": "profiling_dia_semana",
+      "displayName": "Distribuição Dia Semana",
+      "queryLines": [
+        "SELECT\n",
+        "  DAYOFWEEK(tpep_pickup_datetime) as dia_semana_num,\n",
+        "  CASE DAYOFWEEK(tpep_pickup_datetime)\n",
+        "    WHEN 1 THEN 'Domingo'\n",
+        "    WHEN 2 THEN 'Segunda'\n",
+        "    WHEN 3 THEN 'Terça'\n",
+        "    WHEN 4 THEN 'Quarta'\n",
+        "    WHEN 5 THEN 'Quinta'\n",
+        "    WHEN 6 THEN 'Sexta'\n",
+        "    WHEN 7 THEN 'Sábado'\n",
+        "  END as dia_semana,\n",
+        "  COUNT(*) as quantidade,\n",
+        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) as percentual\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "WHERE\n",
+        "  tpep_pickup_datetime IS NOT NULL\n",
+        "GROUP BY\n",
+        "  DAYOFWEEK(tpep_pickup_datetime)\n",
+        "ORDER BY\n",
+        "  dia_semana_num"
+      ]
+    },
+    {
+      "name": "profiling_estatisticas_detalhadas",
+      "displayName": "Estatísticas Detalhadas",
+      "queryLines": [
+        "SELECT\n",
+        "  'VendorID' as coluna,\n",
+        "  'Categorical' as tipo,\n",
+        "  COUNT(DISTINCT VendorID) as valores_distintos,\n",
+        "  COUNT(*) - COUNT(VendorID) as valores_ausentes,\n",
+        "  NULL as minimo,\n",
+        "  NULL as maximo,\n",
+        "  NULL as media\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'passenger_count',\n",
+        "  'Numeric',\n",
+        "  COUNT(DISTINCT passenger_count),\n",
+        "  COUNT(*) - COUNT(passenger_count),\n",
+        "  MIN(passenger_count),\n",
+        "  MAX(passenger_count),\n",
+        "  ROUND(AVG(passenger_count), 2)\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption\n",
+        "UNION ALL\n",
+        "SELECT\n",
+        "  'total_amount',\n",
+        "  'Numeric',\n",
+        "  COUNT(DISTINCT total_amount),\n",
+        "  COUNT(*) - COUNT(total_amount),\n",
+        "  MIN(total_amount),\n",
+        "  MAX(total_amount),\n",
+        "  ROUND(AVG(total_amount), 2)\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_gold.gold_yellow_trips_consumption"
+      ]
     }
   ],
   "pages": [
@@ -210,6 +763,9 @@
               "encodings": {
                 "target": {
                   "fieldName": "unique_rules_count",
+                  "change": {
+                    "type": "percent"
+                  },
                   "displayName": "Regras únicas"
                 }
               },
@@ -232,70 +788,19 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "table_success",
+                  "datasetName": "table_success_with_dimensions",
                   "fields": [
                     {
-                      "name": "layer",
-                      "expression": "`layer`"
+                      "name": "validity_success",
+                      "expression": "`validity_success`"
                     },
                     {
-                      "name": "success_percentage",
-                      "expression": "`success_percentage`"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              }
-            ],
-            "spec": {
-              "encodings": {
-                "x": {
-                  "displayName": "Camada",
-                  "fieldName": "layer",
-                  "scale": {
-                    "type": "categorical"
-                  }
-                },
-                "y": {
-                  "axis": {
-                    "title": "% sucesso"
-                  },
-                  "displayName": "% sucesso",
-                  "fieldName": "success_percentage",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                }
-              },
-              "frame": {
-                "showDescription": true,
-                "showTitle": true,
-                "title": "% sucesso por tabela",
-                "description": "Percentual de verificações de linha aprovadas na última execução."
-              },
-              "version": 3,
-              "widgetType": "bar"
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 14,
-            "width": 6,
-            "height": 6
-          }
-        },
-        {
-          "widget": {
-            "name": "dimension_success_chart",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "dimension_success",
-                  "fields": [
+                      "name": "consistency_success",
+                      "expression": "`consistency_success`"
+                    },
                     {
-                      "name": "dimension",
-                      "expression": "`dimension`"
+                      "name": "completeness_success",
+                      "expression": "`completeness_success`"
                     },
                     {
                       "name": "layer",
@@ -312,10 +817,10 @@
             ],
             "spec": {
               "frame": {
-                "showDescription": true,
                 "showTitle": true,
-                "title": "% sucesso por dimensão",
-                "description": "Comparação de validity e consistency em cada camada."
+                "title": "% sucesso por camada",
+                "showDescription": true,
+                "description": "Percentual de verificações aprovadas. Tooltip mostra detalhamento por dimensão."
               },
               "version": 3,
               "widgetType": "bar",
@@ -329,6 +834,15 @@
                 },
                 "y": {
                   "fieldName": "success_percentage",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
                   "axis": {
                     "title": "% sucesso"
                   },
@@ -337,20 +851,47 @@
                     "type": "quantitative"
                   }
                 },
-                "color": {
-                  "fieldName": "dimension",
-                  "legend": {
-                    "position": "right",
-                    "title": "Dimensão"
+                "extra": [
+                  {
+                    "fieldName": "validity_success",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "formatTemplate": "{{ @formatted }}%",
+                    "displayName": "Validity"
                   },
-                  "displayName": "Dimensão",
-                  "scale": {
-                    "type": "categorical"
+                  {
+                    "fieldName": "consistency_success",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "formatTemplate": "{{ @formatted }}%",
+                    "displayName": "Consistency"
+                  },
+                  {
+                    "fieldName": "completeness_success",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "formatTemplate": "{{ @formatted }}%",
+                    "displayName": "Completeness"
                   }
-                },
-                "label": {
-                  "show": true
-                }
+                ]
               },
               "data": {
                 "queryName": "main_query"
@@ -358,118 +899,10 @@
             }
           },
           "position": {
-            "x": 4,
+            "x": 0,
             "y": 6,
-            "width": 8,
-            "height": 6
-          }
-        },
-        {
-          "widget": {
-            "name": "rule_violations_chart",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "rule_matrix",
-                  "fields": [
-                    {
-                      "name": "rule_name",
-                      "expression": "`rule_name`"
-                    },
-                    {
-                      "name": "layer",
-                      "expression": "`layer`"
-                    },
-                    {
-                      "name": "violation_percentage",
-                      "expression": "`violation_percentage`"
-                    }
-                  ],
-                  "cubeGroupingSets": {
-                    "sets": [
-                      {
-                        "fieldNames": [
-                          "rule_name"
-                        ]
-                      },
-                      {
-                        "fieldNames": [
-                          "layer"
-                        ]
-                      }
-                    ]
-                  },
-                  "disaggregated": true,
-                  "orders": [
-                    {
-                      "direction": "ASC",
-                      "expression": "`rule_name`"
-                    },
-                    {
-                      "direction": "ASC",
-                      "expression": "`layer`"
-                    }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "frame": {
-                "showDescription": true,
-                "showTitle": true,
-                "title": "Violações por regra e camada",
-                "description": "Intensidade da cor indica % de violações. Tons mais escuros = mais violações."
-              },
-              "version": 3,
-              "widgetType": "pivot",
-              "encodings": {
-                "rows": [
-                  {
-                    "fieldName": "rule_name",
-                    "scale": {
-                      "type": "categorical"
-                    },
-                    "displayName": "Regra"
-                  }
-                ],
-                "columns": [
-                  {
-                    "fieldName": "layer",
-                    "scale": {
-                      "type": "categorical"
-                    },
-                    "displayName": "Camada"
-                  }
-                ],
-                "cell": {
-                  "type": "single-cell",
-                  "fieldName": "violation_percentage",
-                  "displayName": "% violações",
-                  "style": {
-                    "type": "color-scale",
-                    "backgroundColor": {
-                      "scale": {
-                        "type": "quantitative",
-                        "colorRamp": {
-                          "mode": "scheme",
-                          "scheme": "reds"
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              "data": {
-                "queryName": "main_query"
-              }
-            }
-          },
-          "position": {
-            "x": 3,
-            "y": 20,
-            "width": 9,
-            "height": 6
+            "width": 6,
+            "height": 8
           }
         },
         {
@@ -482,81 +915,16 @@
                   "datasetName": "success_history",
                   "fields": [
                     {
+                      "name": "success_percentage",
+                      "expression": "`success_percentage`"
+                    },
+                    {
                       "name": "execution_date",
                       "expression": "`execution_date`"
                     },
                     {
                       "name": "layer",
                       "expression": "`layer`"
-                    },
-                    {
-                      "name": "success_percentage",
-                      "expression": "`success_percentage`"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              }
-            ],
-            "spec": {
-              "encodings": {
-                "color": {
-                  "displayName": "Camada",
-                  "fieldName": "layer",
-                  "legend": {
-                    "position": "right",
-                    "title": "Camada"
-                  },
-                  "scale": {
-                    "type": "categorical"
-                  }
-                },
-                "x": {
-                  "displayName": "Data",
-                  "fieldName": "execution_date",
-                  "scale": {
-                    "type": "temporal"
-                  }
-                },
-                "y": {
-                  "axis": {
-                    "title": "% sucesso"
-                  },
-                  "displayName": "% sucesso",
-                  "fieldName": "success_percentage",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                }
-              },
-              "frame": {
-                "showDescription": false,
-                "showTitle": true,
-                "title": "Histórico diário de sucesso"
-              },
-              "version": 3,
-              "widgetType": "bar"
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 26,
-            "width": 12,
-            "height": 7
-          }
-        },
-        {
-          "widget": {
-            "name": "7b7eddfa",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "latest_run",
-                  "fields": [
-                    {
-                      "name": "evaluated_rules",
-                      "expression": "`evaluated_rules`"
                     }
                   ],
                   "disaggregated": true
@@ -564,12 +932,67 @@
               }
             ],
             "spec": {
-              "version": 2,
-              "widgetType": "counter",
+              "frame": {
+                "showTitle": true,
+                "title": "Histórico diário de sucesso",
+                "showDescription": true,
+                "description": "Heatmap temporal: intensidade da cor representa % sucesso por camada"
+              },
+              "version": 3,
+              "widgetType": "heatmap",
               "encodings": {
-                "target": {
-                  "fieldName": "evaluated_rules",
-                  "displayName": "Regras avaliadas"
+                "x": {
+                  "fieldName": "execution_date",
+                  "axis": {
+                    "title": "Data de execução"
+                  },
+                  "displayName": "Data de execução",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "layer",
+                  "axis": {
+                    "title": "Camada"
+                  },
+                  "displayName": "Camada",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "1. landing",
+                        "2. bronze",
+                        "3. silver",
+                        "4. ouro"
+                      ]
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "success_percentage",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "formatTemplate": "{{ @formatted }}%",
+                  "legend": {
+                    "position": "right",
+                    "title": "% sucesso"
+                  },
+                  "displayName": "% sucesso",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "scheme",
+                      "scheme": "viridis"
+                    }
+                  }
                 }
               },
               "data": {
@@ -579,9 +1002,9 @@
           },
           "position": {
             "x": 0,
-            "y": 20,
-            "width": 3,
-            "height": 6
+            "y": 14,
+            "width": 12,
+            "height": 5
           }
         },
         {
@@ -593,6 +1016,10 @@
                 "query": {
                   "datasetName": "rules_by_dimension",
                   "fields": [
+                    {
+                      "name": "success_percentage",
+                      "expression": "`success_percentage`"
+                    },
                     {
                       "name": "dimension",
                       "expression": "`dimension`"
@@ -629,7 +1056,22 @@
                   "scale": {
                     "type": "quantitative"
                   }
-                }
+                },
+                "extra": [
+                  {
+                    "fieldName": "success_percentage",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "formatTemplate": "{{ @formatted }}%",
+                    "displayName": "% sucesso agregado"
+                  }
+                ]
               },
               "data": {
                 "queryName": "main_query"
@@ -685,9 +1127,955 @@
             }
           },
           "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "rule_violations_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "rule_matrix",
+                  "fields": [
+                    {
+                      "name": "dimension",
+                      "expression": "`dimension`"
+                    },
+                    {
+                      "name": "rule_name",
+                      "expression": "`rule_name`"
+                    },
+                    {
+                      "name": "target_column",
+                      "expression": "`target_column`"
+                    },
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "violation_percentage",
+                      "expression": "`violation_percentage`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Violações por regra e camada",
+                "showDescription": true,
+                "description": "% de violações por regra em cada camada, com dimensão de qualidade e atributo monitorado"
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "dimension",
+                    "displayName": "Dimensão"
+                  },
+                  {
+                    "fieldName": "rule_name",
+                    "displayName": "Regra"
+                  },
+                  {
+                    "fieldName": "target_column",
+                    "displayName": "Atributo monitorado"
+                  },
+                  {
+                    "fieldName": "layer",
+                    "displayName": "Camada"
+                  },
+                  {
+                    "fieldName": "violation_percentage",
+                    "format": {
+                      "type": "number-plain",
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    },
+                    "displayName": "% violações",
+                    "formatTemplate": "{{ @formatted }}%"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "documentacao_gold",
+      "displayName": "Metadados",
+      "layout": [
+        {
+          "widget": {
+            "name": "doc_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 📝 Documentação dos Ativos Gold - NYC TLC\n",
+                "\n",
+                "Documentação completa do schema e descrição de todas as tabelas da camada Gold do pipeline NYC TLC.\n",
+                "\n",
+                "### Visão Geral\n",
+                "\n",
+                "Este dashboard documenta **4 tabelas Gold** com **70 colunas** no total, organizadas em duas categorias principais:\n",
+                "\n",
+                "#### Tabelas de Consumo (Views Materializadas)\n",
+                "1. **gold_yellow_trips_consumption** - Viagens Yellow Taxi prontas para consumo (9 colunas)\n",
+                "2. **gold_taxi_passengers_by_hour** - Média de passageiros por hora (10 colunas)\n",
+                "\n",
+                "#### Tabelas de Monitoramento (Managed Tables)\n",
+                "3. **gold_yellow_trips_consumption_drift_metrics** - Métricas de drift (22 colunas)\n",
+                "4. **gold_yellow_trips_consumption_profile_metrics** - Métricas de profiling (29 colunas)\n",
+                "\n",
+                "### Estrutura de Documentação\n",
+                "\n",
+                "Cada tabela inclui:\n",
+                "* **Nome da coluna**: Identificador único\n",
+                "* **Tipo de dados**: String, Numeric, Timestamp, Struct, Array\n",
+                "* **Descrição**: Propósito e uso da coluna\n",
+                "\n",
+                "---\n",
+                "\n",
+                "**Catálogo**: `case_ifood.tlc_data_gold`\n",
+                "**Período de Cobertura**: Janeiro a Maio de 2023"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "tables_summary",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "gold_tables_summary",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "table_type",
+                      "expression": "`table_type`"
+                    },
+                    {
+                      "name": "column_count",
+                      "expression": "`column_count`"
+                    },
+                    {
+                      "name": "description",
+                      "expression": "`description`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Resumo das Tabelas Gold",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "table_name"
+                  },
+                  {
+                    "fieldName": "table_type"
+                  },
+                  {
+                    "fieldName": "column_count"
+                  },
+                  {
+                    "fieldName": "description"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "table1_columns",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "gold_yellow_trips_columns",
+                  "fields": [
+                    {
+                      "name": "column_name",
+                      "expression": "`column_name`"
+                    },
+                    {
+                      "name": "data_type",
+                      "expression": "`data_type`"
+                    },
+                    {
+                      "name": "description",
+                      "expression": "`description`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "gold_yellow_trips_consumption (9 colunas)",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "column_name"
+                  },
+                  {
+                    "fieldName": "data_type"
+                  },
+                  {
+                    "fieldName": "description"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table2_columns",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "gold_passengers_by_hour_columns",
+                  "fields": [
+                    {
+                      "name": "column_name",
+                      "expression": "`column_name`"
+                    },
+                    {
+                      "name": "data_type",
+                      "expression": "`data_type`"
+                    },
+                    {
+                      "name": "description",
+                      "expression": "`description`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "gold_taxi_passengers_by_hour (10 colunas)",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "column_name"
+                  },
+                  {
+                    "fieldName": "data_type"
+                  },
+                  {
+                    "fieldName": "description"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 10,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table3_columns",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "drift_metrics_columns",
+                  "fields": [
+                    {
+                      "name": "column_name",
+                      "expression": "`column_name`"
+                    },
+                    {
+                      "name": "data_type",
+                      "expression": "`data_type`"
+                    },
+                    {
+                      "name": "description",
+                      "expression": "`description`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "gold_yellow_trips_consumption_drift_metrics (principais colunas)",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "column_name"
+                  },
+                  {
+                    "fieldName": "data_type"
+                  },
+                  {
+                    "fieldName": "description"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table4_columns",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profile_metrics_columns",
+                  "fields": [
+                    {
+                      "name": "column_name",
+                      "expression": "`column_name`"
+                    },
+                    {
+                      "name": "data_type",
+                      "expression": "`data_type`"
+                    },
+                    {
+                      "name": "description",
+                      "expression": "`description`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "gold_yellow_trips_consumption_profile_metrics (principais colunas)",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "column_name"
+                  },
+                  {
+                    "fieldName": "data_type"
+                  },
+                  {
+                    "fieldName": "description"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 18,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "profiling",
+      "displayName": "Profiling",
+      "layout": [
+        {
+          "widget": {
+            "name": "profiling_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 📊 Profiling - gold_yellow_trips_consumption\n",
+                "\n",
+                "Análise detalhada de qualidade e distribuição dos dados da tabela Gold de consumo de viagens Yellow Taxi.\n",
+                "\n",
+                "### Abrangência\n",
+                "* **Período**: Janeiro a Maio de 2023\n",
+                "* **Catálogo**: case_ifood.tlc_data_gold\n",
+                "* **Tipo**: Materialized View\n",
+                "* **Colunas Analisadas**: VendorID, passenger_count, total_amount, datas pickup/dropoff, metadados\n",
+                "\n",
+                "### Widgets Disponíveis\n",
+                "1. **Cobertura**: Métricas gerais (total registros, dias de cobertura, vendors)\n",
+                "2. **Completude**: Análise de valores nulos por coluna\n",
+                "3. **Distribuições**: Padrões por hora do dia e dia da semana\n",
+                "4. **Estatísticas**: Descritivas detalhadas (mínimo, máximo, média)\n",
+                "\n",
+                "---\n",
+                "\n",
+                "**Dashboard completo de Profiling:** [Profiling - gold_yellow_trips_consumption](#dashboard-3493296966915778)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "total_records",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_coverage",
+                  "fields": [
+                    {
+                      "name": "count(total_records)",
+                      "expression": "COUNT(`total_records`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total de Registros",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(total_records)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "dias_cobertura",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_coverage",
+                  "fields": [
+                    {
+                      "name": "count(dias_cobertura)",
+                      "expression": "COUNT(`dias_cobertura`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Dias de Cobertura",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(dias_cobertura)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 3,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "vendors",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_coverage",
+                  "fields": [
+                    {
+                      "name": "count(vendors_distintos)",
+                      "expression": "COUNT(`vendors_distintos`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Vendors Distintos",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(vendors_distintos)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 3,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "media_passageiros",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_coverage",
+                  "fields": [
+                    {
+                      "name": "count(media_passageiros)",
+                      "expression": "COUNT(`media_passageiros`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Média Passageiros",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(media_passageiros)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "completeness_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_completeness",
+                  "fields": [
+                    {
+                      "name": "coluna",
+                      "expression": "`coluna`"
+                    },
+                    {
+                      "name": "total",
+                      "expression": "`total`"
+                    },
+                    {
+                      "name": "nao_nulos",
+                      "expression": "`nao_nulos`"
+                    },
+                    {
+                      "name": "pct_completo",
+                      "expression": "`pct_completo`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Completude por Coluna",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "coluna"
+                  },
+                  {
+                    "fieldName": "total"
+                  },
+                  {
+                    "fieldName": "nao_nulos"
+                  },
+                  {
+                    "fieldName": "pct_completo"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "dist_hora_pickup",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_distribuicao_hora_pickup",
+                  "fields": [
+                    {
+                      "name": "hora",
+                      "expression": "`hora`"
+                    },
+                    {
+                      "name": "sum(quantidade)",
+                      "expression": "SUM(`quantidade`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Distribuição por Hora do Dia (Pickup)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "hora",
+                  "displayName": "hora",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(quantidade)",
+                  "displayName": "quantidade",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "hora",
+                  "displayName": "hora",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
             "x": 0,
             "y": 12,
-            "width": 3,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "dist_dia_semana",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_dia_semana",
+                  "fields": [
+                    {
+                      "name": "dia_semana",
+                      "expression": "`dia_semana`"
+                    },
+                    {
+                      "name": "sum(quantidade)",
+                      "expression": "SUM(`quantidade`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Distribuição por Dia da Semana",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "dia_semana",
+                  "displayName": "dia_semana",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(quantidade)",
+                  "displayName": "quantidade",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "dia_semana",
+                  "displayName": "dia_semana",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 12,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "estatisticas_detalhadas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "profiling_estatisticas_detalhadas",
+                  "fields": [
+                    {
+                      "name": "coluna",
+                      "expression": "`coluna`"
+                    },
+                    {
+                      "name": "tipo",
+                      "expression": "`tipo`"
+                    },
+                    {
+                      "name": "valores_distintos",
+                      "expression": "`valores_distintos`"
+                    },
+                    {
+                      "name": "valores_ausentes",
+                      "expression": "`valores_ausentes`"
+                    },
+                    {
+                      "name": "minimo",
+                      "expression": "`minimo`"
+                    },
+                    {
+                      "name": "maximo",
+                      "expression": "`maximo`"
+                    },
+                    {
+                      "name": "media",
+                      "expression": "`media`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Estatísticas Descritivas por Coluna",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "coluna"
+                  },
+                  {
+                    "fieldName": "tipo"
+                  },
+                  {
+                    "fieldName": "valores_distintos"
+                  },
+                  {
+                    "fieldName": "valores_ausentes"
+                  },
+                  {
+                    "fieldName": "minimo"
+                  },
+                  {
+                    "fieldName": "maximo"
+                  },
+                  {
+                    "fieldName": "media"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "header_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Profiling - gold_yellow_trips_consumption\n",
+                "\n",
+                "Análise de profiling completa disponível no [Dashboard de Profiling](/#dashboard-01f1890d493a11948ee489d936ff7af2)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 12,
             "height": 2
           }
         }
