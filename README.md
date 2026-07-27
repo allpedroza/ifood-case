@@ -1,4 +1,4 @@
-# Case iFood — pipeline Medallion no Databricks
+# Case iFood: Data Governance Engineer (TLC Trip Record Data)
 
 O projeto baixa os arquivos de viagens da NYC TLC para um Unity Catalog
 Volume e os processa em tabelas Delta com Lakeflow Spark Declarative
@@ -177,11 +177,38 @@ de acompanhamento contínuo em regras executáveis. As violações são
 monitoradas, e não removidas automaticamente, salvo quando uma regra explícita
 do produto Gold determina a exclusão.
 
+### Marco da EDA e estratégia de branches
+
+O principal marco técnico da EDA foi o bugfix da Bronze que identificou o gap
+entre a estrutura física observada nos Parquets e o schema declarado pelo
+contrato. O primeiro profiling mostrou `VendorID` e `passenger_count`
+completamente nulos. A comparação entre o arquivo de origem e as camadas
+revelou que parte dos valores não havia desaparecido da fonte: campos com
+variações estruturais de nome ou tipo haviam sido direcionados pelo Auto Loader
+para `_rescued_data` e não eram recuperados pela transformação.
+
+Esse diagnóstico mudou o pipeline. A Bronze passou a reconciliar cada coluna
+do contrato com os valores resgatados, aplicar o tipo canônico e preservar
+campos não reconhecidos para auditoria. Depois do reprocessamento, `VendorID`
+deixou de apresentar a nulidade indevida; os nulos remanescentes de
+`passenger_count` foram confirmados como característica presente na origem e
+passaram a ser monitorados por Data Quality.
+
+Esse bugfix também define o marco de versionamento do projeto:
+
+- `original`, congelada no commit `c1faa2d`, representa o pipeline anterior à
+  identificação e correção do gap estrutural dos Parquets;
+- `main` contém a recuperação canônica introduzida pelo bugfix da Bronze a
+  partir do commit `3fdb0c0` e toda a evolução posterior;
+- `original` é uma referência histórica para comparação e não é a branch
+  implantável;
+- `main` é a fonte vigente para deploy no Databricks.
+
 ### Hipóteses avaliadas e consequências
 
 | Hipótese investigada | Evidência e conclusão | Consequência no projeto |
 |---|---|---|
-| `VendorID` e `passenger_count` totalmente nulos indicavam ausência desses campos nos arquivos oficiais. | O primeiro profiling apresentou ambos como 100% nulos. A inspeção entre camadas mostrou que valores declarados com variação de schema físico podiam estar em `_rescued_data`. Após a recuperação canônica, `VendorID` passou a ser preenchido; parte de `passenger_count` continuou nula na própria origem. A hipótese foi rejeitada para `VendorID` e parcialmente confirmada para `passenger_count`. | A Bronze passou a recuperar e converter deterministicamente valores de `_rescued_data`. Foram criadas regras de completude para `VendorID`, `passenger_count` e `total_amount` em todas as camadas. Nulos legítimos de `passenger_count` são preservados e monitorados. |
+| `VendorID` e `passenger_count` totalmente nulos indicavam ausência desses campos nos arquivos oficiais. | O primeiro profiling apresentou ambos como 100% nulos. A inspeção entre camadas mostrou que valores declarados com variação de schema físico podiam estar em `_rescued_data`. Após a recuperação canônica, `VendorID` passou a ser preenchido; parte de `passenger_count` continuou nula na própria origem. A hipótese foi rejeitada para `VendorID` e parcialmente confirmada para `passenger_count`. | A Bronze passou a recuperar e converter deterministicamente valores de `_rescued_data`. Esse bugfix tornou-se o marco entre as branches `original` e `main`. Também foram criadas regras de completude para `VendorID`, `passenger_count` e `total_amount` em todas as camadas. Nulos legítimos de `passenger_count` são preservados e monitorados. |
 | Datas de viagem em 2001 significavam que a Silver havia processado arquivos fora da janela de janeiro a maio de 2023. | A Silver limita arquivos por `_reference_month`, extraído do nome do Parquet. Um arquivo de 2023 pode conter timestamps de viagem fora do seu mês de referência; portanto, não houve vazamento de partições antigas para a Silver. A errata apresentada, referente a arquivos de 2015 a 2017, não explica registros dos arquivos de 2023. | `_reference_month` foi preservado até a Gold para rastreabilidade. Foram criadas as regras `pickup_before_reference_month` e `trip_datetime_after_reference_month`, aplicadas da Landing à Gold. Os registros permanecem disponíveis para auditoria em vez de serem descartados silenciosamente. |
 | Todo `passenger_count` nulo ou igual a zero deveria ser convertido para zero ou removido do pipeline. | Nulo significa quantidade não informada e não é semanticamente equivalente a zero. Valores não positivos também não representam uma quantidade válida para calcular a média solicitada, mas devem continuar rastreáveis. | Os dados detalhados são preservados. A regra `passenger_count_null` mede completude e `passenger_count_non_positive` mede validade. Apenas `gold_taxi_passengers_by_hour` exclui nulos e valores menores ou iguais a zero do denominador, expondo também `trips_discarded`. |
 | `total_amount <= 0` era necessariamente erro técnico e deveria ser eliminado. | Valores negativos ou iguais a zero podem representar ajustes, estornos ou registros operacionais da fonte. Não foi encontrada evidência suficiente para reescrevê-los. | A consulta mensal preserva esses valores e documenta a premissa. `total_amount_null` e `total_amount_non_positive` monitoram completude e validade sem alterar o dado original. |
