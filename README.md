@@ -64,9 +64,70 @@ Este roteiro parte de uma conta Databricks Free sem recursos do projeto. O
 Bundle não fixa workspace, profile ou SQL Warehouse, por isso os mesmos
 arquivos podem ser implantados em outra conta.
 
-### 1. Criar a conta e o catálogo
+### 1. Instalar as ferramentas locais
 
-Crie uma conta no Databricks Free e abra o workspace. Na interface:
+O deploy é iniciado no terminal da máquina do usuário. Instale primeiro:
+
+- `git`, para clonar o repositório;
+- Databricks CLI versão 0.205 ou superior.
+
+No macOS, instale a CLI com Homebrew:
+
+```bash
+brew install databricks/tap/databricks
+```
+
+No Windows, use WinGet:
+
+```powershell
+winget install Databricks.DatabricksCLI
+```
+
+No Linux, use o instalador oficial:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+```
+
+Confirme as duas instalações antes de continuar:
+
+```bash
+git --version
+databricks version
+```
+
+A versão exibida pela Databricks CLI deve ser 0.205 ou superior. Consulte as
+[instruções oficiais de instalação](https://docs.databricks.com/aws/pt/dev-tools/cli/install)
+se o comando não for encontrado.
+
+### 2. Criar a conta Databricks Free
+
+Crie uma conta na
+[Databricks Free Edition](https://docs.databricks.com/aws/pt/getting-started/free-edition).
+Ao finalizar o cadastro, o Databricks cria um workspace com compute serverless
+e armazenamento padrão. Entre nesse workspace antes de continuar.
+
+### 3. Identificar o host e o workspace ID
+
+Observe a URL aberta no navegador. Ela segue este formato:
+
+```text
+https://dbc-xxxxxxxx-xxxx.cloud.databricks.com/browse?o=123456789
+```
+
+Separe os dois valores:
+
+- `<WORKSPACE_URL>` é somente
+  `https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`;
+- `<WORKSPACE_ID>` é o número após `o=`.
+
+O login da CLI usa `<WORKSPACE_URL>`. O Bundle não exige nem armazena
+`<WORKSPACE_ID>`; esse número é útil para reconhecer links da interface. Não
+copie `/browse`, `?o=` ou qualquer outro caminho para o parâmetro `--host`.
+
+### 4. Criar o catálogo
+
+Na interface do workspace:
 
 1. acesse `Catalog`;
 2. selecione `Create catalog`;
@@ -79,22 +140,17 @@ O catálogo precisa existir antes do deploy. O Bundle cria os schemas, o Volume
 e os demais recursos dentro dele. Uma pasta chamada `case_ifood` em
 `Workspace` não substitui o catálogo do Unity Catalog.
 
-### 2. Identificar o SQL Warehouse
+### 5. Identificar o SQL Warehouse
 
 Abra `SQL Warehouses` e confirme que existe um warehouse serverless, como o
-`Serverless Starter Warehouse`. O ID aparece na URL do warehouse e também pode
-ser consultado pela CLI depois da autenticação:
+`Serverless Starter Warehouse`. Por enquanto, localize o warehouse pela
+interface. O ID será consultado pela CLI após a autenticação. O repositório
+não fornece um valor padrão porque esse identificador pertence ao workspace
+de destino.
 
-```bash
-databricks warehouses list --profile <PROFILE>
-```
+### 6. Clonar o repositório e autenticar a CLI
 
-Guarde o ID como `<WAREHOUSE_ID>`. O repositório não fornece um valor padrão
-porque esse identificador pertence ao workspace de destino.
-
-### 3. Clonar o repositório e autenticar a CLI
-
-Tenha `git` e a Databricks CLI instalados. Em um diretório de trabalho:
+Em um diretório de trabalho:
 
 ```bash
 git clone https://github.com/allpedroza/ifood-case.git
@@ -105,9 +161,9 @@ databricks auth login \
   --profile <PROFILE>
 ```
 
-Use apenas o host do workspace em `<WORKSPACE_URL>`, por exemplo
-`https://dbc-xxxxxxxx-xxxx.cloud.databricks.com`, sem o caminho `/browse` e
-sem o parâmetro `o`.
+O navegador abrirá o login OAuth. Entre com a mesma conta usada para criar o
+workspace e autorize a CLI. `<PROFILE>` é um nome local escolhido pelo usuário
+para identificar essa conexão.
 
 Confirme a identidade, o host e o catálogo antes de criar recursos:
 
@@ -117,7 +173,15 @@ databricks current-user me --profile <PROFILE>
 databricks catalogs get case_ifood --profile <PROFILE>
 ```
 
-### 4. Validar e implantar o Bundle
+Liste os warehouses e copie o campo `id` do warehouse escolhido:
+
+```bash
+databricks warehouses list --profile <PROFILE>
+```
+
+Esse valor será usado como `<WAREHOUSE_ID>` nos comandos seguintes.
+
+### 7. Validar e implantar o Bundle
 
 Execute os comandos a partir da pasta que contém `databricks.yml`:
 
@@ -138,7 +202,7 @@ databricks bundle deploy \
 O deploy cria cinco schemas, um Volume, três Jobs, uma Pipeline Lakeflow e um
 dashboard. Ele não inicia a ingestão e mantém o agendamento mensal pausado.
 
-### 5. Executar a primeira carga
+### 8. Executar a primeira carga
 
 Primeiro materialize o catálogo de regras. Depois execute a carga padrão do
 case, limitada a janeiro até maio de 2023:
@@ -160,7 +224,7 @@ O Job de ingestão baixa os arquivos para a Landing, gera os contratos,
 atualiza Bronze, Silver e Gold e executa as regras de qualidade. Não inicie
 `medallion` em paralelo, pois uma Pipeline aceita somente um update ativo.
 
-### 6. Conferir a implantação
+### 9. Conferir a implantação
 
 Liste os recursos gerenciados pelo Bundle:
 
