@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$SCRIPT_DIR/src/databricks"
+STAGE_SCRIPT="$SCRIPT_DIR/scripts/stage_landing.sh"
 
 erro() {
   printf 'Erro: %s\n' "$1" >&2
@@ -60,6 +61,8 @@ command -v databricks >/dev/null 2>&1 ||
   erro "Databricks CLI não encontrada. Instale a versão 0.205 ou superior."
 [[ -f "$BUNDLE_DIR/databricks.yml" ]] ||
   erro "databricks.yml não encontrado em $BUNDLE_DIR"
+[[ -x "$STAGE_SCRIPT" ]] ||
+  erro "helper de Landing não encontrado ou sem permissão de execução"
 
 printf '\nDeploy do case iFood no Databricks Free\n\n'
 databricks version
@@ -134,7 +137,12 @@ databricks bundle deploy "${BUNDLE_ARGS[@]}"
 
 printf '\nDeploy concluído.\n'
 
-if confirmar "Executar quality_setup e a primeira carga agora?"; then
+if confirmar "Preparar a Landing e executar a primeira carga agora?"; then
+  "$STAGE_SCRIPT" \
+    --profile "$PROFILE" \
+    --catalog "$CATALOG" \
+    --inicio "$INICIO" \
+    --fim "$FIM"
   databricks bundle run quality_setup "${BUNDLE_ARGS[@]}"
   databricks bundle run ingestion \
     --params "inicio=$INICIO,fim=$FIM" \

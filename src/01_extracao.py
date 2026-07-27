@@ -195,6 +195,16 @@ def baixar(url: str, destino: Path, ausencia_esperada: bool = False) -> bool:
             time.sleep(INTERVALO_REQUISICOES)
             return True
         except (requests.RequestException, IOError) as e:
+            mensagem_erro = str(e)
+            if (
+                "Temporary failure in name resolution" in mensagem_erro
+                or "NameResolutionError" in mensagem_erro
+            ):
+                raise RuntimeError(
+                    "o compute não possui acesso DNS ao domínio de origem; "
+                    "na Databricks Free Edition, prepare a Landing com "
+                    "deploy_databricks.sh ou scripts/stage_landing.sh"
+                ) from e
             print(f"  tentativa {tentativa}/{MAX_TENTATIVAS} falhou: {e}")
             if tentativa < MAX_TENTATIVAS:
                 print(

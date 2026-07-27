@@ -22,7 +22,7 @@ para localizar as respostas.
 
 ## Estrutura
 
-- `src/01_extracao.py`: baixa os Parquets e metadados oficiais para a Landing.
+- `src/01_extracao.py`: valida a Landing e baixa fontes quando há acesso externo.
 - `src/02_bronze.py`: cria as tabelas Bronze com Auto Loader e PySpark.
 - `src/03_silver.py`: padroniza as viagens de janeiro a maio de 2023 na Silver.
 - `src/04_gold.py`: publica as duas tabelas Gold governadas para consumo.
@@ -34,13 +34,18 @@ para localizar as respostas.
 - `analysis/perguntas/`: contém o notebook SQL com as respostas do case.
 - `analysis/eda/`: contém o notebook SQL de análise exploratória da Gold.
 - `deploy_databricks.sh`: conduz o deploy interativo a partir do terminal.
+- `scripts/stage_landing.sh`: transfere as fontes oficiais para o Volume.
 
 ## Modelo de execução
 
-O processamento é executado integralmente no Databricks. O repositório local
-é usado somente para versionar o código, validar o Bundle e realizar o deploy.
-O script de extração exige como destino um Unity Catalog Volume e rejeita
-diretórios locais.
+Transformações, contratos, tabelas e regras de qualidade são executados no
+Databricks. Na Free Edition, o cliente local também transporta os arquivos
+oficiais até o Unity Catalog Volume porque o compute pode bloquear os domínios
+de origem. Nenhuma transformação de dados ocorre na máquina local.
+
+O repositório local é usado para versionar o código, validar e implantar o
+Bundle e preparar a Landing com `scripts/stage_landing.sh`. O script executado
+no Job exige como destino um Unity Catalog Volume e rejeita diretórios locais.
 
 O `requirements.txt` descreve o ambiente virtual local para desenvolvimento e
 validações auxiliares. Os workloads produtivos não dependem desse ambiente:
@@ -82,11 +87,14 @@ SQL Warehouse e a janela da carga. Em seguida, ele:
 1. autentica a CLI por OAuth;
 2. confirma se o catálogo e o warehouse existem;
 3. executa `bundle validate` e `bundle deploy`;
-4. pergunta se deve configurar Data Quality e executar a primeira carga;
-5. mostra os recursos implantados.
+4. baixa os arquivos oficiais localmente e os envia ao Volume;
+5. configura Data Quality e executa a primeira carga;
+6. mostra os recursos implantados.
 
 Credenciais e parâmetros pessoais não são gravados no repositório. O profile
-OAuth fica no arquivo de configuração local da Databricks CLI.
+OAuth fica no arquivo de configuração local da Databricks CLI. Cada arquivo é
+validado e removido da pasta temporária após o upload, sem manter uma cópia
+completa da Landing na máquina.
 
 <details>
 <summary>Caminho manual, começando do zero</summary>
@@ -231,8 +239,21 @@ dashboard. Ele não inicia a ingestão e mantém o agendamento mensal pausado.
 
 ### 8. Executar a primeira carga
 
-Primeiro materialize o catálogo de regras. Depois execute a carga padrão do
-case, limitada a janeiro até maio de 2023:
+Na Free Edition, prepare a Landing pelo cliente local porque o acesso de saída
+do compute serverless é restrito. A carga padrão do case vai de janeiro até
+maio de 2023:
+
+```bash
+cd ../..
+scripts/stage_landing.sh \
+  --profile <PROFILE> \
+  --catalog case_ifood \
+  --inicio 2023-01 \
+  --fim 2023-05
+cd src/databricks
+```
+
+Depois materialize o catálogo de regras e execute o Job:
 
 ```bash
 databricks bundle run quality_setup \
@@ -247,7 +268,7 @@ databricks bundle run ingestion \
   --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
 
-O Job de ingestão baixa os arquivos para a Landing, gera os contratos,
+O Job confirma que os arquivos estão íntegros na Landing, gera os contratos,
 atualiza Bronze, Silver e Gold e executa as regras de qualidade. Não inicie
 `medallion` em paralelo, pois uma Pipeline aceita somente um update ativo.
 
@@ -287,18 +308,19 @@ se a NYC TLC republicar os arquivos.
 
 </details>
 
-### Problemas de conectividade externa
+### Acesso externo na Free Edition
 
-O Job serverless precisa resolver e acessar os domínios oficiais
-`home4.nyc.gov` e `d37ci6vzurychx.cloudfront.net`. Se o log apresentar
-`Temporary failure in name resolution`, o problema ocorre antes da
-transformação e deve ser tratado como conectividade do workspace.
+O
+[acesso de saída da Free Edition é restrito](https://docs.databricks.com/aws/pt/getting-started/free-edition-limitations)
+a alguns domínios confiáveis. Por isso o caminho recomendado usa
+`scripts/stage_landing.sh`: o cliente local acessa `home4.nyc.gov` e
+`d37ci6vzurychx.cloudfront.net`, valida os arquivos e os envia ao Unity Catalog
+Volume pela CLI.
 
-Evite iniciar várias execuções enquanto o DNS estiver indisponível. Em um
-teste de infraestrutura, os arquivos oficiais podem ser enviados ao Volume
-com `databricks fs cp` e o pipeline pode ser executado depois. Esse
-procedimento contorna somente a extração e não representa o fluxo operacional
-normal do projeto.
+Se a conta tiver acesso externo liberado, o Job também consegue baixar
+arquivos ausentes diretamente. Em caso de falha DNS, o extrator interrompe na
+primeira tentativa e orienta o uso do staging local, em vez de aguardar todos
+os ciclos de retry.
 
 ## Recursos implantados
 
@@ -318,23 +340,26 @@ Os schemas seguem o padrão `tlc_data_<layer>`:
 O Volume gerenciado de arquivos originais é
 `case_ifood.tlc_data_landing.nyc_tlc_landing`.
 
-Antes dos dados mensais, a extração baixa uma única vez oito artefatos
-oficiais para `tlc/_metadata`: guia de uso, quatro dicionários, nota do
-formato Parquet, lookup de zonas e shapefile. A flag `BAIXAR_METADADOS`
-controla esse comportamento. Na Bronze, `bronze_metadata_artifacts`
-mantém o inventário e a rastreabilidade dos arquivos, enquanto
-`bronze_taxi_zone_lookup` expõe a lookup geográfica. O de-para entre o
-dicionário `hvfhs` e o dataset `fhvhv` é registrado explicitamente.
+Antes dos dados mensais, o staging transfere uma única vez oito artefatos
+oficiais para `tlc/_metadata`: guia de uso, quatro dicionários, nota do formato
+Parquet, lookup de zonas e shapefile. Em ambientes com acesso externo, a flag
+`BAIXAR_METADADOS` permite que o próprio Job faça esse download. Na Bronze,
+`bronze_metadata_artifacts` mantém o inventário e a rastreabilidade dos
+arquivos, enquanto `bronze_taxi_zone_lookup` expõe a lookup geográfica. O
+de-para entre o dicionário `hvfhs` e o dataset `fhvhv` é registrado
+explicitamente.
 O Job usa `2023-01` a `2023-05` como padrão, que é o período do case. O
 extrator aceita outros meses ou `fim=auto`. Arquivos já íntegros são ignorados,
 e lacunas históricas são preenchidas.
 
 ### Republicação dos arquivos
 
-O nome e o caminho de cada Parquet são determinísticos. A extração grava
-primeiro um arquivo `.part`, valida tamanho e marcadores Parquet e só então
-promove o download. Em novas execuções, um arquivo íntegro no mesmo caminho é
-ignorado. Essa é a idempotência usada na Landing.
+O nome e o caminho de cada Parquet são determinísticos. O staging local baixa
+um arquivo por vez em uma pasta temporária, valida os marcadores Parquet,
+envia ao Volume e remove a cópia local. O extrator do Job também valida
+arquivos existentes e usa `.part` quando realiza um download direto. Em novas
+execuções, um arquivo presente no mesmo caminho é ignorado. Essa é a
+idempotência usada na Landing.
 
 A NYC TLC pode republicar um mês. O fluxo não substitui automaticamente um
 arquivo já íntegro, e os registros não possuem uma chave oficial de viagem que
@@ -545,9 +570,10 @@ O roteiro completo está em
 O deploy cria ou atualiza os recursos, mas não executa os Jobs. Na primeira
 implantação, `quality_setup` deve terminar antes de `ingestion`.
 
-O Job `ingestion` encadeia:
+O assistente prepara a Landing antes de iniciar o Job. A partir daí,
+`ingestion` encadeia:
 
-1. extração dos Parquets e metadados para a Landing;
+1. validação dos Parquets e metadados presentes na Landing;
 2. geração determinística dos contratos;
 3. atualização da Pipeline Medallion, da Bronze até a Gold;
 4. execução do Job de Data Quality.
@@ -563,18 +589,35 @@ O Job `job_ingestao_nyc_tlc` inclui um agendamento para o dia 15 de cada mês, �
 padrão termina em `2023-05`. Assim, um deploy de avaliação não inicia cargas
 recorrentes nem baixa dados fora do período solicitado.
 
-Para publicar uma mudança de código ou configuração:
+Na Free Edition sem acesso externo, mantenha o schedule pausado. Para ampliar
+a janela, prepare primeiro os novos arquivos pela máquina local e depois
+execute o Job. Arquivos já presentes no Volume são ignorados:
+
+```bash
+scripts/stage_landing.sh \
+  --profile <PROFILE> \
+  --catalog case_ifood \
+  --inicio 2023-01 \
+  --fim auto
+
+cd src/databricks
+databricks bundle run ingestion \
+  -t free \
+  --params inicio=2023-01,fim=auto \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+```
+
+Para publicar uma mudança de código ou configuração sem alterar a janela:
 
 ```bash
 cd src/databricks
 databricks bundle validate \
+  -t free \
   --profile <PROFILE> \
   --var="sql_warehouse_id=<WAREHOUSE_ID>"
 databricks bundle deploy \
-  --profile <PROFILE> \
-  --var="sql_warehouse_id=<WAREHOUSE_ID>"
-databricks bundle run ingestion \
-  --params inicio=2023-01,fim=2023-05 \
+  -t free \
   --profile <PROFILE> \
   --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
