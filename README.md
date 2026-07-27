@@ -9,10 +9,14 @@ Pipelines.
 - `src/01_extracao.py`: baixa os Parquets e metadados oficiais para a Landing.
 - `src/02_bronze.py`: cria as tabelas Bronze com Auto Loader e PySpark.
 - `src/03_silver.py`: padroniza as viagens de janeiro a maio de 2023 na Silver.
-- `src/04_gold.py`: publica a tabela Yellow governada para consumo.
-- `src/databricks/resources/`: define o Job, a Pipeline, os schemas e o Volume.
+- `src/04_gold.py`: publica as duas tabelas Gold governadas para consumo.
+- `src/metadata/`: extrai deterministicamente os contratos oficiais.
+- `src/quality/`: contém o catálogo e a avaliação das regras de Data Quality.
+- `src/databricks/resources/`: define Jobs, Pipeline, schemas, Volume e dashboard.
+- `src/databricks/dashboards/`: mantém o dashboard Databricks AI/BI como código.
 - `src/databricks/databricks.yml`: configura o Bundle e os ambientes.
-- `analysis/`: contém scripts e notebooks com as respostas do case.
+- `analysis/perguntas/`: contém o notebook SQL com as respostas do case.
+- `analysis/eda/`: contém o notebook SQL de análise exploratória da Gold.
 
 ## Modelo de execução
 
@@ -20,6 +24,11 @@ O processamento é executado integralmente no Databricks. O repositório local
 é usado somente para versionar o código, validar o Bundle e realizar o deploy.
 O script de extração exige como destino um Unity Catalog Volume e rejeita
 diretórios locais.
+
+O `requirements.txt` descreve o ambiente virtual local para desenvolvimento e
+validações auxiliares. Os workloads produtivos não dependem desse ambiente:
+suas bibliotecas são declaradas nos `environment` dos Jobs serverless do
+Bundle.
 
 ## Autenticação no Databricks Free
 
@@ -32,12 +41,31 @@ databricks auth login \
   --profile ap_ifood
 ```
 
-## Validar e implantar
+Antes da primeira implantação, o catálogo `case_ifood` deve existir no Unity
+Catalog. No Databricks Free, crie-o pela interface como um catálogo `Standard`
+usando `Default Storage`. O Bundle cria os schemas e o Volume dentro desse
+catálogo, mas não cria o catálogo.
+
+Confirme a identidade e o host antes de qualquer operação:
+
+```bash
+databricks auth describe --profile ap_ifood
+```
+
+## Recursos implantados
 
 O host do workspace Free e o perfil `ap_ifood` estão fixados no target
 `free`, que é o único target e também o padrão do Bundle. Os schemas seguem
-o padrão `tlc_data_<layer>`: `tlc_data_landing` e `tlc_data_bronze`.
-O Volume de arquivos originais é `nyc_tlc_landing`.
+o padrão `tlc_data_<layer>`:
+
+- `case_ifood.tlc_data_landing`;
+- `case_ifood.tlc_data_bronze`;
+- `case_ifood.tlc_data_silver`;
+- `case_ifood.tlc_data_gold`;
+- `case_ifood.tlc_data_quality`.
+
+O Volume gerenciado de arquivos originais é
+`case_ifood.tlc_data_landing.nyc_tlc_landing`.
 
 Antes dos dados mensais, a extração baixa uma única vez oito artefatos
 oficiais para `tlc/_metadata`: guia de uso, quatro dicionários, nota do
@@ -72,6 +100,44 @@ A Gold também publica `gold_taxi_passengers_by_hour`, que interpreta táxi no
 sentido regulatório e combina, por `UNION ALL`, viagens Yellow e Green de maio
 de 2023. FHV e High Volume FHV ficam fora desse produto. Contagens nulas ou
 menores ou iguais a zero são excluídas da média e contabilizadas separadamente.
+
+## Data Quality
+
+O contrato versionado `src/quality/rules.yml` possui nove regras, avaliadas nas
+camadas Landing, Bronze, Silver e Gold:
+
+- completude de `VendorID`, `passenger_count` e `total_amount`;
+- quantidade de passageiros não positiva;
+- valor total não positivo;
+- desembarque anterior ao embarque;
+- duração superior a 24 horas;
+- embarque anterior ao mês de referência;
+- embarque ou desembarque posterior ao mês de referência.
+
+`quality_setup` materializa o catálogo de regras, a tabela histórica de
+resultados e as views de monitoramento em `tlc_data_quality`.
+`quality_monitoring` avalia as regras depois de cada atualização bem-sucedida
+da Medallion. Se houver mais de uma avaliação no mesmo dia, apenas a execução
+mais recente daquele dia permanece no histórico.
+
+As regras sinalizam violações, mas não removem registros automaticamente. A
+exclusão acontece somente quando o contrato de um produto de consumo a declara,
+como em `gold_taxi_passengers_by_hour`, que calcula a média apenas com
+`passenger_count > 0`.
+
+## Dashboard
+
+O dashboard AI/BI `dashboard_monitoramento_qualidade_nyc_tlc` é definido em
+`src/databricks/dashboards/data_quality.lvdash.json` e implantado pelo Bundle.
+Ele usa o SQL Warehouse configurado em `sql_warehouse_id` e reúne três abas:
+
+- `Monitoramento de qualidade`;
+- `Metadados`;
+- `Profiling`.
+
+Alterações feitas diretamente na GUI devem ser exportadas e sincronizadas com
+o arquivo `.lvdash.json` antes de um novo deploy, para que o dashboard remoto e
+o repositório continuem equivalentes.
 
 ## EDA
 
@@ -141,19 +207,64 @@ do produto Gold determina a exclusão.
   configuração ou regra versionada e depois reavaliados no profiling, evitando
   ajustes manuais sem rastreabilidade.
 
+## Primeira implantação
+
+O deploy cria ou atualiza os recursos, mas não executa os Jobs. Na primeira
+implantação, materialize o contrato de qualidade antes de executar a ingestão:
+
 ```bash
 cd src/databricks
-databricks bundle validate
-databricks bundle deploy
+databricks bundle validate --profile ap_ifood
+databricks bundle deploy --profile ap_ifood
+databricks bundle run quality_setup --profile ap_ifood
 databricks bundle run ingestion \
-  -- --inicio=2023-01 --fim=2023-05
+  --params inicio=2023-01,fim=auto \
+  --profile ap_ifood
 ```
 
-Antes do deploy, confirme a identidade e o host:
+O Job `ingestion` encadeia:
+
+1. extração dos Parquets e metadados para a Landing;
+2. geração determinística dos contratos;
+3. atualização da Pipeline Medallion, da Bronze até a Gold;
+4. execução do Job de Data Quality.
+
+O usuário ou service principal do deploy precisa ter permissão para criar
+schemas e volumes no catálogo existente e para usar o SQL Warehouse do
+dashboard.
+
+## Atualização recorrente
+
+O Job `job_ingestao_nyc_tlc` está agendado para o dia 15 de cada mês, às 08h,
+no fuso `America/Sao_Paulo`. Seus parâmetros padrão percorrem desde `2023-01`
+até o mês anterior (`fim=auto`). Arquivos íntegros já existentes são ignorados,
+portanto a execução é retomável e preenche novas disponibilidades sem baixar
+novamente todo o histórico.
+
+Para publicar uma mudança de código ou configuração:
 
 ```bash
-databricks auth describe --profile ap_ifood
+cd src/databricks
+databricks bundle validate --profile ap_ifood
+databricks bundle deploy --profile ap_ifood
+databricks bundle run ingestion \
+  --params inicio=2023-01,fim=auto \
+  --profile ap_ifood
 ```
 
-O usuário ou service principal usado no deploy precisa ter permissão para
-criar schemas e volumes no catálogo selecionado.
+Para avaliar novamente a qualidade sem refazer a carga:
+
+```bash
+cd src/databricks
+databricks bundle run quality_monitoring --profile ap_ifood
+```
+
+Uma atualização completa da Pipeline deve ser usada apenas quando houver
+mudança de lógica, schema ou necessidade explícita de recomputar as tabelas:
+
+```bash
+cd src/databricks
+databricks bundle run medallion \
+  --full-refresh-all \
+  --profile ap_ifood
+```
