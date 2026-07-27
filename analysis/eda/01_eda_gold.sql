@@ -60,6 +60,57 @@ ORDER BY mes_referencia;
 -- COMMAND ----------
 
 -- MAGIC %md
+-- MAGIC ### 1.1 Evolução mensal pela data de pickup
+-- MAGIC
+-- MAGIC Esta visão usa o mês em que a corrida ocorreu. Ela complementa
+-- MAGIC `_reference_month`, que representa o mês declarado pelo arquivo de
+-- MAGIC origem. A comparação torna visíveis registros carregados em um arquivo
+-- MAGIC diferente do mês indicado por `tpep_pickup_datetime`.
+
+-- COMMAND ----------
+
+WITH reference_counts AS (
+  SELECT
+    _reference_month AS mes,
+    COUNT(*) AS corridas_mes_arquivo
+  FROM eda_yellow_trips
+  GROUP BY _reference_month
+),
+pickup_counts AS (
+  SELECT
+    DATE_FORMAT(tpep_pickup_datetime, 'yyyy-MM') AS mes,
+    COUNT(*) AS corridas_mes_pickup
+  FROM eda_yellow_trips
+  WHERE tpep_pickup_datetime >= TIMESTAMP '2023-01-01 00:00:00'
+    AND tpep_pickup_datetime <  TIMESTAMP '2023-06-01 00:00:00'
+  GROUP BY DATE_FORMAT(tpep_pickup_datetime, 'yyyy-MM')
+)
+SELECT
+  reference_counts.mes AS mes_pickup,
+  reference_counts.corridas_mes_arquivo,
+  pickup_counts.corridas_mes_pickup,
+  pickup_counts.corridas_mes_pickup
+    - reference_counts.corridas_mes_arquivo AS diferenca,
+  ROUND(
+    100.0 * (
+      pickup_counts.corridas_mes_pickup
+      - LAG(pickup_counts.corridas_mes_pickup)
+        OVER (ORDER BY reference_counts.mes)
+    ) / NULLIF(
+      LAG(pickup_counts.corridas_mes_pickup)
+        OVER (ORDER BY reference_counts.mes),
+      0
+    ),
+    2
+  ) AS variacao_percentual_mes_anterior
+FROM reference_counts
+LEFT JOIN pickup_counts
+  ON reference_counts.mes = pickup_counts.mes
+ORDER BY mes_pickup;
+
+-- COMMAND ----------
+
+-- MAGIC %md
 -- MAGIC ## 2. Receita total e ticket médio por mês
 -- MAGIC
 -- MAGIC O total inclui ajustes negativos existentes na fonte. A quantidade de

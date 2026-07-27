@@ -29,6 +29,34 @@ Foram analisadas **16.186.386 corridas**. Fevereiro e abril apresentaram
 redução em relação ao mês anterior; maio teve o maior volume, com 3.513.649
 corridas.
 
+### Visão adicional pelo mês de pickup
+
+Esta visão usa `tpep_pickup_datetime` como referência de negócio e considera
+somente pickups entre `2023-01-01` e `2023-06-01`. Ela não substitui
+`_reference_month`: as duas perspectivas respondem a perguntas diferentes.
+
+- `_reference_month`: mês declarado pelo arquivo e usado para rastrear a carga;
+- mês de pickup: mês em que a corrida efetivamente ocorreu.
+
+| Mês | Corridas pelo arquivo | Corridas pelo pickup | Diferença | Variação mensal pelo pickup |
+|---|---:|---:|---:|---:|
+| 2023-01 | 3.066.766 | 3.066.726 | -40 | — |
+| 2023-02 | 2.913.955 | 2.914.003 | 48 | -4,98% |
+| 2023-03 | 3.403.766 | 3.403.660 | -106 | 16,80% |
+| 2023-04 | 3.288.250 | 3.288.248 | -2 | -3,39% |
+| 2023-05 | 3.513.649 | 3.513.645 | -4 | 6,85% |
+
+As diferenças são pequenas, mas confirmam que o mês do arquivo e o mês do
+evento não são equivalentes. Há **104 registros a mais na visão por arquivo**
+do que na visão de pickups dentro da janela. Além disso, registros podem migrar
+entre meses adjacentes quando agrupados pelo pickup, motivo pelo qual as
+diferenças mensais não devem ser interpretadas apenas como exclusões.
+
+Para indicadores operacionais de ingestão e reconciliação, deve-se usar
+`_reference_month`. Para evolução da demanda e comportamento das corridas,
+faz mais sentido usar o mês de `tpep_pickup_datetime`, mantendo as regras de DQ
+para monitorar eventos fora do mês declarado pelo arquivo.
+
 ## 2. Receita total e ticket médio por mês
 
 `total_amount` é tratado como o valor total registrado pela NYC TLC, e não como
