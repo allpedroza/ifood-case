@@ -1,6 +1,6 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # EDA — NYC TLC Yellow Taxi
+-- MAGIC # EDA: NYC TLC Yellow Taxi
 -- MAGIC
 -- MAGIC Fonte detalhada:
 -- MAGIC `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`
@@ -62,10 +62,10 @@ ORDER BY mes_referencia;
 -- MAGIC %md
 -- MAGIC ### 1.1 Evolução mensal pela data de pickup
 -- MAGIC
--- MAGIC Esta visão usa o mês em que a corrida ocorreu. Ela complementa
--- MAGIC `_reference_month`, que representa o mês declarado pelo arquivo de
--- MAGIC origem. A comparação torna visíveis registros carregados em um arquivo
--- MAGIC diferente do mês indicado por `tpep_pickup_datetime`.
+-- MAGIC Esta visão usa o mês em que a corrida ocorreu. `_reference_month`
+-- MAGIC representa o mês declarado pelo arquivo de origem. A comparação mostra
+-- MAGIC registros carregados em um arquivo diferente do mês indicado por
+-- MAGIC `tpep_pickup_datetime`.
 
 -- COMMAND ----------
 
@@ -114,7 +114,7 @@ ORDER BY mes_pickup;
 -- MAGIC ## 2. Receita total e ticket médio por mês
 -- MAGIC
 -- MAGIC O total inclui ajustes negativos existentes na fonte. A quantidade de
--- MAGIC valores disponíveis evidencia o denominador efetivamente usado.
+-- MAGIC valores disponíveis mostra o denominador usado.
 
 -- COMMAND ----------
 

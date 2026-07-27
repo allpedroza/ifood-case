@@ -1,6 +1,6 @@
 -- Databricks notebook source
 -- MAGIC %md
--- MAGIC # Respostas analíticas — NYC TLC Yellow Taxi
+-- MAGIC # Respostas analíticas: NYC TLC Yellow Taxi
 -- MAGIC
 -- MAGIC Fonte de consumo:
 -- MAGIC `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`
@@ -19,8 +19,8 @@
 -- MAGIC %md
 -- MAGIC ## Cobertura dos dados usados
 -- MAGIC
--- MAGIC Esta verificação evidencia o período, a quantidade de viagens e a
--- MAGIC quantidade de valores disponíveis para cada métrica.
+-- MAGIC A consulta mostra o período, a quantidade de viagens e a quantidade
+-- MAGIC de valores disponíveis para cada métrica.
 
 -- COMMAND ----------
 

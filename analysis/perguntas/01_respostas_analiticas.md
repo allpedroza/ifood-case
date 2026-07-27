@@ -1,4 +1,4 @@
-# Respostas analíticas — NYC TLC
+# Respostas analíticas: NYC TLC
 
 Este documento acompanha o notebook
 [`01_respostas_analiticas.sql`](01_respostas_analiticas.sql) e registra os
@@ -35,15 +35,15 @@ representar ajustes operacionais.
 
 ### Resposta
 
-Entre janeiro e maio de 2023, a média mensal por viagem variou de **26,90**,
-em fevereiro, a **28,96**, em maio. Depois da redução observada em fevereiro,
+Entre janeiro e maio de 2023, a média mensal por viagem variou de 26,90,
+em fevereiro, a 28,96, em maio. Depois da redução observada em fevereiro,
 a média aumentou em março, abril e maio.
 
 ## 2. Média de passageiros por hora no mês de maio
 
 ### Premissa
 
-“Todos os táxis da frota” é interpretado no sentido regulatório da NYC TLC:
+"Todos os táxis da frota" é interpretado no sentido regulatório da NYC TLC:
 Yellow Taxi e Green Taxi. FHV e High Volume FHV não são classificados como
 táxi nesse contexto e não disponibilizam `passenger_count`.
 
@@ -84,8 +84,8 @@ viagens descartadas. Yellow utiliza `tpep_pickup_datetime` e Green utiliza
 ### Resposta
 
 A média permaneceu próxima de um a dois passageiros durante todo o dia,
-variando de **1,26 passageiro às 06h** a **1,45 passageiro às 02h e às 03h**.
-O maior volume válido ocorreu às **18h**, com **245.268 viagens consideradas**.
+variando de 1,26 passageiro às 06h a 1,45 passageiro às 02h e às 03h.
+O maior volume válido ocorreu às 18h, com 245.268 viagens consideradas.
 Em todas as horas, Yellow representou a maior parte das viagens, enquanto
 Green permaneceu incluído para preservar o conceito regulatório de todos os
 táxis.

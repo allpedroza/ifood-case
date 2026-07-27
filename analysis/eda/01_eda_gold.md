@@ -1,10 +1,9 @@
-# EDA — NYC TLC Yellow Taxi
+# EDA: NYC TLC Yellow Taxi
 
 Este documento acompanha o notebook
 [`01_eda_gold.sql`](01_eda_gold.sql) e registra os resultados obtidos em 27 de julho de 2026.
 
-Fonte principal:
-`case_ifood.tlc_data_gold.gold_yellow_trips_consumption`.
+Fonte: `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`.
 
 O período analisado compreende os arquivos de referência de janeiro a maio de
 2023. O mês é determinado por `_reference_month`, e não pelo timestamp da
@@ -18,13 +17,13 @@ ser executado novamente após mudanças nos dados ou na pipeline.
 
 | Mês de referência | Corridas | Variação mensal |
 |---|---:|---:|
-| 2023-01 | 3.066.766 | — |
+| 2023-01 | 3.066.766 | n/a |
 | 2023-02 | 2.913.955 | -4,98% |
 | 2023-03 | 3.403.766 | 16,81% |
 | 2023-04 | 3.288.250 | -3,39% |
 | 2023-05 | 3.513.649 | 6,85% |
 
-Foram analisadas **16.186.386 corridas**. Fevereiro e abril apresentaram
+Foram analisadas 16.186.386 corridas. Fevereiro e abril apresentaram
 redução em relação ao mês anterior; maio teve o maior volume, com 3.513.649
 corridas.
 
@@ -39,15 +38,15 @@ somente pickups entre `2023-01-01` e `2023-06-01`. Ela não substitui
 
 | Mês | Corridas pelo arquivo | Corridas pelo pickup | Diferença | Variação mensal pelo pickup |
 |---|---:|---:|---:|---:|
-| 2023-01 | 3.066.766 | 3.066.726 | -40 | — |
+| 2023-01 | 3.066.766 | 3.066.726 | -40 | n/a |
 | 2023-02 | 2.913.955 | 2.914.003 | 48 | -4,98% |
 | 2023-03 | 3.403.766 | 3.403.660 | -106 | 16,80% |
 | 2023-04 | 3.288.250 | 3.288.248 | -2 | -3,39% |
 | 2023-05 | 3.513.649 | 3.513.645 | -4 | 6,85% |
 
-As diferenças são pequenas, mas confirmam que o mês do arquivo e o mês do
-evento não são equivalentes. Há **104 registros a mais na visão por arquivo**
-do que na visão de pickups dentro da janela. Além disso, registros podem migrar
+As diferenças mostram que o mês do arquivo e o mês do evento não são
+equivalentes. Há 104 registros a mais na visão por arquivo do que na visão de
+pickups dentro da janela. Registros também podem migrar
 entre meses adjacentes quando agrupados pelo pickup, motivo pelo qual as
 diferenças mensais não devem ser interpretadas apenas como exclusões.
 
@@ -88,8 +87,8 @@ representar ajustes ou estornos.
 | 2023-05 | 102.573.881,02 | 29,46 | 3.481.872 | 31.777 | 808.129,06 |
 
 A remoção de negativos aumenta tanto a receita somada quanto o ticket médio.
-Na janela completa, foram removidas **141.407 corridas**, e a diferença
-acumulada da receita foi de **3.488.304,77**. Esse aumento não representa nova
+Na janela completa, foram removidas 141.407 corridas, e a diferença
+acumulada da receita foi de 3.488.304,77. Esse aumento não representa nova
 receita: é apenas o efeito matemático de retirar valores negativos da soma.
 
 ## 3. Corridas e receita por VendorID
@@ -115,9 +114,8 @@ menor. Não foram encontrados `VendorID` nulos.
 
 Todos os valores negativos da janela estão associados ao VendorID 2. Portanto,
 a alteração entre os cenários original e sem negativos está concentrada nesse
-fornecedor. Isso justifica manter as duas visões: a original representa
-fielmente a fonte, enquanto a alternativa evidencia a sensibilidade das
-métricas aos ajustes negativos.
+fornecedor. A visão original representa a fonte. A alternativa mostra a
+sensibilidade das métricas aos ajustes negativos.
 
 ## 4. Média de passageiros por corrida
 
@@ -133,7 +131,7 @@ métricas aos ajustes negativos.
 | 2023-05 | 1,36 | 1,38 | 3.513.649 | 3.411.853 | 101.796 | 59.725 |
 
 A média válida permaneceu entre 1,38 e 1,41 passageiro. A diferença entre as
-duas médias demonstra o impacto dos valores não positivos. Os nulos não foram
+duas médias mostra o impacto dos valores não positivos. Os nulos não foram
 imputados e permanecem monitorados pelas regras de completude.
 
 ## 5. Distribuição da duração das corridas
@@ -175,8 +173,8 @@ Landing, Bronze, Silver e Gold:
 | `total_amount_null` | 0 | 0,000000% | OK |
 
 Somando as avaliações, cada camada teve 852.390 sinalizações em 145.677.474
-pares registro-regra, equivalentes a aproximadamente **0,5851% das
-verificações**. Esse valor não representa registros únicos: uma mesma corrida
+pares registro-regra, equivalentes a aproximadamente 0,5851% das
+verificações. Esse valor não representa registros únicos: uma mesma corrida
 pode violar mais de uma regra.
 
 A igualdade entre as quatro camadas indica que as transformações preservaram
@@ -188,8 +186,8 @@ Landing e Gold.
 Para a correlação, foram consideradas somente viagens com cronologia válida,
 duração entre zero e 24 horas e `total_amount` informado.
 
-- corridas consideradas: **16.185.497**;
-- correlação de Pearson entre duração e valor: **0,2330**.
+- corridas consideradas: 16.185.497;
+- correlação de Pearson entre duração e valor: 0,2330.
 
 A associação é positiva, mas fraca: viagens mais longas tendem a apresentar
 valores maiores, porém duração isoladamente explica pouco da variação de

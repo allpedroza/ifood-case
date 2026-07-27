@@ -177,24 +177,22 @@ de acompanhamento contínuo em regras executáveis. As violações são
 monitoradas, e não removidas automaticamente, salvo quando uma regra explícita
 do produto Gold determina a exclusão.
 
-### Marco da EDA e estratégia de branches
+### Correção da Bronze e estratégia de branches
 
-O principal marco técnico da EDA foi o bugfix da Bronze que identificou o gap
-entre a estrutura física observada nos Parquets e o schema declarado pelo
-contrato. O primeiro profiling mostrou `VendorID` e `passenger_count`
-completamente nulos. A comparação entre o arquivo de origem e as camadas
-revelou que parte dos valores não havia desaparecido da fonte: campos com
-variações estruturais de nome ou tipo haviam sido direcionados pelo Auto Loader
-para `_rescued_data` e não eram recuperados pela transformação.
+A correção da Bronze é o ponto de separação entre as duas versões do projeto.
+O primeiro profiling mostrou `VendorID` e `passenger_count` completamente
+nulos. A comparação do arquivo de origem com as camadas mostrou uma diferença
+entre a estrutura física dos Parquets e o schema do contrato. O Auto Loader
+havia direcionado campos com variações de nome ou tipo para `_rescued_data`, e
+a transformação não recuperava esses valores.
 
-Esse diagnóstico mudou o pipeline. A Bronze passou a reconciliar cada coluna
-do contrato com os valores resgatados, aplicar o tipo canônico e preservar
-campos não reconhecidos para auditoria. Depois do reprocessamento, `VendorID`
-deixou de apresentar a nulidade indevida; os nulos remanescentes de
-`passenger_count` foram confirmados como característica presente na origem e
-passaram a ser monitorados por Data Quality.
+A Bronze passou a reconciliar as colunas do contrato com os valores resgatados,
+aplicar o tipo canônico e manter os campos não reconhecidos para auditoria.
+Depois do reprocessamento, `VendorID` deixou de apresentar a nulidade indevida.
+Os nulos remanescentes de `passenger_count` estavam na origem e passaram a ser
+monitorados por Data Quality.
 
-Esse bugfix também define o marco de versionamento do projeto:
+As branches usam essa correção como ponto de separação:
 
 - `original`, congelada no commit `c1faa2d`, representa o pipeline anterior à
   identificação e correção do gap estrutural dos Parquets;
@@ -208,13 +206,13 @@ Esse bugfix também define o marco de versionamento do projeto:
 
 | Hipótese investigada | Evidência e conclusão | Consequência no projeto |
 |---|---|---|
-| `VendorID` e `passenger_count` totalmente nulos indicavam ausência desses campos nos arquivos oficiais. | O primeiro profiling apresentou ambos como 100% nulos. A inspeção entre camadas mostrou que valores declarados com variação de schema físico podiam estar em `_rescued_data`. Após a recuperação canônica, `VendorID` passou a ser preenchido; parte de `passenger_count` continuou nula na própria origem. A hipótese foi rejeitada para `VendorID` e parcialmente confirmada para `passenger_count`. | A Bronze passou a recuperar e converter deterministicamente valores de `_rescued_data`. Esse bugfix tornou-se o marco entre as branches `original` e `main`. Também foram criadas regras de completude para `VendorID`, `passenger_count` e `total_amount` em todas as camadas. Nulos legítimos de `passenger_count` são preservados e monitorados. |
+| `VendorID` e `passenger_count` totalmente nulos indicavam ausência desses campos nos arquivos oficiais. | O primeiro profiling apresentou ambos como 100% nulos. A inspeção entre camadas mostrou que valores declarados com variação de schema físico podiam estar em `_rescued_data`. Após a recuperação canônica, `VendorID` passou a ser preenchido; parte de `passenger_count` continuou nula na própria origem. A hipótese foi rejeitada para `VendorID` e parcialmente confirmada para `passenger_count`. | A Bronze passou a recuperar e converter deterministicamente valores de `_rescued_data`. Esse bugfix separa as branches `original` e `main`. Também foram criadas regras de completude para `VendorID`, `passenger_count` e `total_amount` em todas as camadas. Nulos legítimos de `passenger_count` são preservados e monitorados. |
 | Datas de viagem em 2001 significavam que a Silver havia processado arquivos fora da janela de janeiro a maio de 2023. | A Silver limita arquivos por `_reference_month`, extraído do nome do Parquet. Um arquivo de 2023 pode conter timestamps de viagem fora do seu mês de referência; portanto, não houve vazamento de partições antigas para a Silver. A errata apresentada, referente a arquivos de 2015 a 2017, não explica registros dos arquivos de 2023. | `_reference_month` foi preservado até a Gold para rastreabilidade. Foram criadas as regras `pickup_before_reference_month` e `trip_datetime_after_reference_month`, aplicadas da Landing à Gold. Os registros permanecem disponíveis para auditoria em vez de serem descartados silenciosamente. |
 | Todo `passenger_count` nulo ou igual a zero deveria ser convertido para zero ou removido do pipeline. | Nulo significa quantidade não informada e não é semanticamente equivalente a zero. Valores não positivos também não representam uma quantidade válida para calcular a média solicitada, mas devem continuar rastreáveis. | Os dados detalhados são preservados. A regra `passenger_count_null` mede completude e `passenger_count_non_positive` mede validade. Apenas `gold_taxi_passengers_by_hour` exclui nulos e valores menores ou iguais a zero do denominador, expondo também `trips_discarded`. |
 | `total_amount <= 0` era necessariamente erro técnico e deveria ser eliminado. | Valores negativos ou iguais a zero podem representar ajustes, estornos ou registros operacionais da fonte. Não foi encontrada evidência suficiente para reescrevê-los. | A consulta mensal preserva esses valores e documenta a premissa. `total_amount_null` e `total_amount_non_positive` monitoram completude e validade sem alterar o dado original. |
 | Desembarque anterior ao embarque ou duração superior a 24 horas poderia ser uma regra normal da operação. | Os metadados definem os campos como início e fim da mesma viagem e não oferecem justificativa semântica para essas ocorrências. Elas foram tratadas como anomalias observáveis, não como motivo automático de exclusão. | Foram criadas as regras `invalid_trip_chronology` e `trip_duration_over_24_hours` em Landing, Bronze, Silver e Gold. |
 | A Gold obrigatória deveria combinar todos os datasets TLC. | Os nomes exigidos `tpep_pickup_datetime` e `tpep_dropoff_datetime` pertencem ao contrato Yellow. Green usa campos `lpep`, e FHV/HVFHV possuem outra semântica e outro conjunto de atributos. | `gold_yellow_trips_consumption` permanece Yellow-only e atende literalmente ao contrato de consumo, sem renomear campos de serviços diferentes para forçar compatibilidade. |
-| “Todos os táxis da frota” na pergunta de passageiros significava somente Yellow Taxi. | A redação da primeira pergunta especifica Yellow, enquanto a segunda diz todos os táxis. No contexto regulatório da NYC TLC, Yellow e Green são táxis; FHV e High Volume FHV são veículos for-hire e não fornecem `passenger_count`. | Foi criada `gold_taxi_passengers_by_hour`, unindo Yellow e Green com harmonização dos timestamps `tpep` e `lpep`. A tabela expõe contagens por serviço, serviços participantes, arquivos de origem e ingestão mais recente. |
+| "Todos os táxis da frota" na pergunta de passageiros significava somente Yellow Taxi. | A redação da primeira pergunta especifica Yellow, enquanto a segunda diz todos os táxis. No contexto regulatório da NYC TLC, Yellow e Green são táxis; FHV e High Volume FHV são veículos for-hire e não fornecem `passenger_count`. | Foi criada `gold_taxi_passengers_by_hour`, unindo Yellow e Green com harmonização dos timestamps `tpep` e `lpep`. A tabela expõe contagens por serviço, serviços participantes, arquivos de origem e ingestão mais recente. |
 | A ausência dos meses mais recentes indicava necessariamente falha do extrator. | A publicação dos arquivos TLC possui atraso e categorias diferentes podem ficar disponíveis em momentos distintos. Entretanto, lacunas em 2024 ou 2025 não poderiam ser explicadas por esse atraso recente. | O extrator percorre inclusivamente todos os meses entre `inicio` e `fim`, atravessa viradas de ano, ignora arquivos já íntegros, interrompe diante de lacuna histórica e tolera `403/404` apenas na janela recente. Com `fim=auto`, tenta até o mês anterior. |
 | Descrições traduzidas ou produzidas manualmente seriam equivalentes ao contrato oficial. | Tradução e redação manual introduziam interpretação não rastreável. O slug `hvfhs` do PDF também difere do slug `fhvhv` dos dados mensais. | Os contratos são extraídos deterministicamente dos PDFs em inglês, com checksum SHA-256. Bronze, Silver e Gold herdam essas descrições; o de-para `hvfhs -> fhvhv` é explícito. |
 
