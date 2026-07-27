@@ -90,7 +90,7 @@ Em todas as horas, Yellow representou a maior parte das viagens, enquanto
 Green permaneceu incluído para preservar o conceito regulatório de todos os
 táxis.
 
-## Reprodutibilidade
+## Como reproduzir e validar? 
 
 Para atualizar este documento, execute todas as células de
 `01_respostas_analiticas.sql` no Databricks SQL após a atualização da pipeline
