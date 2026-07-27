@@ -33,6 +33,7 @@ para localizar as respostas.
 - `src/databricks/databricks.yml`: configura o Bundle e os ambientes.
 - `analysis/perguntas/`: contém o notebook SQL com as respostas do case.
 - `analysis/eda/`: contém o notebook SQL de análise exploratória da Gold.
+- `deploy_databricks.sh`: conduz o deploy interativo a partir do terminal.
 
 ## Modelo de execução
 
@@ -63,6 +64,32 @@ partes isoladas do código; ele não substitui o runtime do Databricks.
 Este roteiro parte de uma conta Databricks Free sem recursos do projeto. O
 Bundle não fixa workspace, profile ou SQL Warehouse, por isso os mesmos
 arquivos podem ser implantados em outra conta.
+
+### Caminho rápido com o assistente
+
+Com `git` e Databricks CLI instalados, crie a conta, o catálogo `case_ifood` e
+confirme que há um SQL Warehouse. As instruções completas estão no caminho
+manual logo abaixo. Depois, execute na raiz do repositório:
+
+```bash
+chmod +x deploy_databricks.sh
+./deploy_databricks.sh
+```
+
+O assistente pede o host do workspace, o nome do profile, o catálogo, o ID do
+SQL Warehouse e a janela da carga. Em seguida, ele:
+
+1. autentica a CLI por OAuth;
+2. confirma se o catálogo e o warehouse existem;
+3. executa `bundle validate` e `bundle deploy`;
+4. pergunta se deve configurar Data Quality e executar a primeira carga;
+5. mostra os recursos implantados.
+
+Credenciais e parâmetros pessoais não são gravados no repositório. O profile
+OAuth fica no arquivo de configuração local da Databricks CLI.
+
+<details>
+<summary>Caminho manual, começando do zero</summary>
 
 ### 1. Instalar as ferramentas locais
 
@@ -257,6 +284,8 @@ FROM case_ifood.tlc_data_gold.gold_yellow_trips_consumption;
 
 O resultado esperado cobre `2023-01` até `2023-05`. As contagens podem mudar
 se a NYC TLC republicar os arquivos.
+
+</details>
 
 ### Problemas de conectividade externa
 
