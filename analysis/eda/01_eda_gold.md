@@ -149,7 +149,7 @@ de valor, comportamento compatível com timestamps extremos ou outras
 anomalias. Ela deve ser investigada separadamente e não interpretada como uma
 relação operacional linear.
 
-## Reprodutibilidade
+## Como reproduzir e validar?
 
 Para atualizar o snapshot:
 
