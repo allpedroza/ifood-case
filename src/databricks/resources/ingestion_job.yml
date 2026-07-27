@@ -27,6 +27,10 @@ resources:
               - "{{job.parameters.fim}}"
               - --destino
               - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc
+              - --landing-schema
+              - ${resources.schemas.landing.name}
+              - --volume-name
+              - ${resources.volumes.tlc_raw.name}
           environment_key: default
 
         - task_key: gerar_contratos

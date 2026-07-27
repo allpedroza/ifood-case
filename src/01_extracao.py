@@ -54,8 +54,6 @@ INTERVALO_REQUISICOES = 1
 ESPERA_ENTRE_TENTATIVAS = 60
 MESES_RECENTES_PERMITIDOS = 2
 HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NYC-TLC-data-pipeline/1.0)"}
-SCHEMA_LANDING_ESPERADO = "tlc_data_landing"
-VOLUME_LANDING_ESPERADO = "nyc_tlc_landing"
 
 
 def ler_argumentos():
@@ -76,11 +74,25 @@ def ler_argumentos():
         required=True,
         help="Caminho obrigatório de um Unity Catalog Volume",
     )
+    parser.add_argument(
+        "--landing-schema",
+        required=True,
+        help="Schema Landing configurado pelo Bundle",
+    )
+    parser.add_argument(
+        "--volume-name",
+        required=True,
+        help="Volume Landing configurado pelo Bundle",
+    )
     return parser.parse_args()
 
 
-def validar_destino_databricks(destino: Path):
-    """Exige o Volume Landing esperado e impede execução com destino local."""
+def validar_destino_databricks(
+    destino: Path,
+    landing_schema: str,
+    volume_name: str,
+):
+    """Confere o destino com os recursos configurados pelo Bundle."""
     partes = destino.parts
     if len(partes) < 5 or partes[1] != "Volumes":
         raise ValueError(
@@ -88,15 +100,15 @@ def validar_destino_databricks(destino: Path):
         )
     schema = partes[3]
     volume = partes[4]
-    if schema != SCHEMA_LANDING_ESPERADO:
+    if schema != landing_schema:
         raise ValueError(
             f"schema Landing inválido: {schema!r}; "
-            f"esperado: {SCHEMA_LANDING_ESPERADO!r}"
+            f"esperado: {landing_schema!r}"
         )
-    if volume != VOLUME_LANDING_ESPERADO:
+    if volume != volume_name:
         raise ValueError(
             f"Volume Landing inválido: {volume!r}; "
-            f"esperado: {VOLUME_LANDING_ESPERADO!r}"
+            f"esperado: {volume_name!r}"
         )
 
 
@@ -153,14 +165,17 @@ def baixar(url: str, destino: Path, ausencia_esperada: bool = False) -> bool:
         print(f"  ja existe, pulando: {destino.name}")
         return True
 
-    ultima_ausencia = None
     for tentativa in range(1, MAX_TENTATIVAS + 1):
         try:
             with requests.get(
                 url, headers=HTTP_HEADERS, stream=True, timeout=TIMEOUT
             ) as r:
-                if r.status_code in (403, 404):
-                    ultima_ausencia = r.status_code
+                if r.status_code in (403, 404) and ausencia_esperada:
+                    print(
+                        f"  arquivo recente ainda nao publicado "
+                        f"({r.status_code}), pulando: {destino.name}"
+                    )
+                    return True
                 r.raise_for_status()
                 tamanho_esperado = int(r.headers.get("Content-Length", 0))
                 tmp = destino.with_suffix(destino.suffix + ".part")
@@ -188,12 +203,6 @@ def baixar(url: str, destino: Path, ausencia_esperada: bool = False) -> bool:
                 )
                 time.sleep(ESPERA_ENTRE_TENTATIVAS)
 
-    if ausencia_esperada and ultima_ausencia in (403, 404):
-        print(
-            f"  ainda nao publicado ({ultima_ausencia}), "
-            f"pulando dentro da janela recente: {destino.name}"
-        )
-        return True
     print(f"  FALHOU apos {MAX_TENTATIVAS} tentativas: {url}")
     return False
 
@@ -201,7 +210,11 @@ def baixar(url: str, destino: Path, ausencia_esperada: bool = False) -> bool:
 # EXECUCAO
 def main():
     args = ler_argumentos()
-    validar_destino_databricks(args.destino)
+    validar_destino_databricks(
+        args.destino,
+        args.landing_schema,
+        args.volume_name,
+    )
     args.destino.mkdir(parents=True, exist_ok=True)
     fim = mes_anterior() if args.fim.lower() == "auto" else args.fim
     falhas = []

@@ -12,6 +12,8 @@ resources:
         arquitetura: medallion
       configuration:
         ifood.landing_path: /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc
+        ifood.landing_schema: ${resources.schemas.landing.name}
+        ifood.landing_volume: ${resources.volumes.tlc_raw.name}
         ifood.bronze_catalog: ${var.catalog}
         ifood.bronze_schema: ${resources.schemas.bronze.name}
         ifood.silver_catalog: ${var.catalog}

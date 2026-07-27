@@ -18,9 +18,9 @@ from pyspark.sql.types import (
 
 
 LANDING_PATH = spark.conf.get("ifood.landing_path")
-SCHEMA_LANDING_ESPERADO = "tlc_data_landing"
-SCHEMA_BRONZE_ESPERADO = "tlc_data_bronze"
-VOLUME_LANDING_ESPERADO = "nyc_tlc_landing"
+LANDING_SCHEMA = spark.conf.get("ifood.landing_schema")
+LANDING_VOLUME = spark.conf.get("ifood.landing_volume")
+BRONZE_SCHEMA = spark.conf.get("ifood.bronze_schema")
 METADATA_PATH = f"{LANDING_PATH}/_metadata"
 METADATA_CONTRACT_PATH = Path(spark.conf.get("ifood.metadata_contract_path"))
 TRIP_DATASETS = ("yellow", "green", "fhv", "fhvhv")
@@ -129,25 +129,23 @@ RESCUED_MAP_TYPE = MapType(StringType(), StringType())
 
 
 def validar_schemas():
-    """Garante o padrão tlc_data_<layer> configurado no Bundle."""
+    """Confere o caminho Landing com os recursos configurados no Bundle."""
     partes = LANDING_PATH.split("/")
     schema_landing = partes[3] if len(partes) > 3 else ""
     volume_landing = partes[4] if len(partes) > 4 else ""
-    schema_bronze = spark.conf.get("ifood.bronze_schema")
-    if schema_landing != SCHEMA_LANDING_ESPERADO:
+    if schema_landing != LANDING_SCHEMA:
         raise ValueError(
             f"schema Landing inválido: {schema_landing!r}; "
-            f"esperado: {SCHEMA_LANDING_ESPERADO!r}"
+            f"esperado: {LANDING_SCHEMA!r}"
         )
-    if schema_bronze != SCHEMA_BRONZE_ESPERADO:
+    if not BRONZE_SCHEMA:
         raise ValueError(
-            f"schema Bronze inválido: {schema_bronze!r}; "
-            f"esperado: {SCHEMA_BRONZE_ESPERADO!r}"
+            "schema Bronze não configurado em ifood.bronze_schema"
         )
-    if volume_landing != VOLUME_LANDING_ESPERADO:
+    if volume_landing != LANDING_VOLUME:
         raise ValueError(
             f"Volume Landing inválido: {volume_landing!r}; "
-            f"esperado: {VOLUME_LANDING_ESPERADO!r}"
+            f"esperado: {LANDING_VOLUME!r}"
         )
 
 
