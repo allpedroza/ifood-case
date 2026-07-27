@@ -131,6 +131,39 @@ ORDER BY mes_referencia;
 -- COMMAND ----------
 
 -- MAGIC %md
+-- MAGIC ### 2.1 Receita e ticket médio sem valores negativos
+-- MAGIC
+-- MAGIC Esta é uma análise de sensibilidade, não uma correção da fonte.
+-- MAGIC Valores iguais a zero permanecem; somente `total_amount < 0` é
+-- MAGIC excluído. A quantidade removida e o impacto sobre a receita são
+-- MAGIC apresentados explicitamente.
+
+-- COMMAND ----------
+
+SELECT
+  _reference_month AS mes_referencia,
+  ROUND(
+    SUM(CASE WHEN total_amount >= 0 THEN total_amount END),
+    2
+  ) AS receita_sem_negativos,
+  ROUND(
+    AVG(CASE WHEN total_amount >= 0 THEN total_amount END),
+    2
+  ) AS ticket_medio_sem_negativos,
+  COUNT_IF(total_amount >= 0) AS corridas_consideradas,
+  COUNT_IF(total_amount < 0) AS corridas_negativas_removidas,
+  ROUND(
+    SUM(CASE WHEN total_amount >= 0 THEN total_amount END)
+      - SUM(total_amount),
+    2
+  ) AS impacto_na_receita
+FROM eda_yellow_trips
+GROUP BY _reference_month
+ORDER BY mes_referencia;
+
+-- COMMAND ----------
+
+-- MAGIC %md
 -- MAGIC ## 3. Corridas e receita por VendorID
 
 -- COMMAND ----------
@@ -144,6 +177,37 @@ SELECT
 FROM eda_yellow_trips
 GROUP BY VendorID
 ORDER BY quantidade_corridas DESC;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### 3.1 Corridas e receita por VendorID sem valores negativos
+-- MAGIC
+-- MAGIC A abertura identifica em qual fornecedor os registros negativos estão
+-- MAGIC concentrados e evita atribuir a diferença a toda a frota.
+
+-- COMMAND ----------
+
+SELECT
+  COALESCE(CAST(VendorID AS STRING), 'NÃO INFORMADO') AS vendor_id,
+  COUNT_IF(total_amount >= 0) AS corridas_consideradas,
+  COUNT_IF(total_amount < 0) AS corridas_negativas_removidas,
+  ROUND(
+    SUM(CASE WHEN total_amount >= 0 THEN total_amount END),
+    2
+  ) AS receita_sem_negativos,
+  ROUND(
+    AVG(CASE WHEN total_amount >= 0 THEN total_amount END),
+    2
+  ) AS ticket_medio_sem_negativos,
+  ROUND(
+    SUM(CASE WHEN total_amount >= 0 THEN total_amount END)
+      - SUM(total_amount),
+    2
+  ) AS impacto_na_receita
+FROM eda_yellow_trips
+GROUP BY VendorID
+ORDER BY corridas_consideradas DESC;
 
 -- COMMAND ----------
 

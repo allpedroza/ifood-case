@@ -73,6 +73,26 @@ receita financeira liquidada. Ajustes negativos da fonte são preservados.
 Maio concentrou o maior volume, a maior receita registrada e o maior ticket
 médio. Não houve `total_amount` nulo na janela analisada.
 
+### 2.1 Receita e ticket médio sem valores negativos
+
+Esta visão é uma análise de sensibilidade. Ela mantém `total_amount = 0` e
+remove somente registros com `total_amount < 0`. O cenário não substitui a
+visão original nem afirma que os valores negativos são erros, pois eles podem
+representar ajustes ou estornos.
+
+| Mês | Receita sem negativos | Ticket médio | Corridas consideradas | Negativas removidas | Impacto na receita |
+|---|---:|---:|---:|---:|---:|
+| 2023-01 | 83.470.189,06 | 27,44 | 3.041.562 | 25.204 | 604.996,84 |
+| 2023-02 | 78.974.247,69 | 27,34 | 2.889.055 | 24.900 | 593.274,29 |
+| 2023-03 | 95.365.471,15 | 28,26 | 3.374.003 | 29.763 | 729.114,09 |
+| 2023-04 | 93.710.028,87 | 28,76 | 3.258.487 | 29.763 | 752.790,49 |
+| 2023-05 | 102.573.881,02 | 29,46 | 3.481.872 | 31.777 | 808.129,06 |
+
+A remoção de negativos aumenta tanto a receita somada quanto o ticket médio.
+Na janela completa, foram removidas **141.407 corridas**, e a diferença
+acumulada da receita foi de **3.488.304,77**. Esse aumento não representa nova
+receita: é apenas o efeito matemático de retirar valores negativos da soma.
+
 ## 3. Corridas e receita por VendorID
 
 | VendorID | Corridas | Participação | Receita registrada | Ticket médio |
@@ -85,6 +105,20 @@ O VendorID 2 respondeu por aproximadamente 73% das corridas e apresentou
 ticket médio superior ao VendorID 1. O VendorID 6 teve participação residual;
 seu ticket médio mais alto deve ser interpretado considerando o volume muito
 menor. Não foram encontrados `VendorID` nulos.
+
+### 3.1 Corridas e receita por VendorID sem valores negativos
+
+| VendorID | Corridas consideradas | Negativas removidas | Receita sem negativos | Ticket médio | Impacto na receita |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 11.668.387 | 141.407 | 337.353.416,47 | 28,91 | 3.488.304,77 |
+| 1 | 4.372.609 | 0 | 116.560.246,08 | 26,66 | 0,00 |
+| 6 | 3.983 | 0 | 180.155,24 | 45,23 | 0,00 |
+
+Todos os valores negativos da janela estão associados ao VendorID 2. Portanto,
+a alteração entre os cenários original e sem negativos está concentrada nesse
+fornecedor. Isso justifica manter as duas visões: a original representa
+fielmente a fonte, enquanto a alternativa evidencia a sensibilidade das
+métricas aos ajustes negativos.
 
 ## 4. Média de passageiros por corrida
 
