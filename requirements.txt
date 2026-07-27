@@ -1,3 +1,6 @@
+# Dependências do ambiente local de desenvolvimento.
+# O runtime Databricks está definido em src/databricks/resources/.
+
 # Manipulação e análise local de dados tabulares
 pandas>=2.2,<3.0
 
@@ -12,5 +15,3 @@ requests>=2.32,<3.0
 
 # Extração determinística dos dicionários oficiais em PDF
 pypdf>=6,<7
-
-# Profiling exploratório da camada Gold no notebook de análise

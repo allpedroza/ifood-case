@@ -4,6 +4,22 @@ O projeto baixa os arquivos de viagens da NYC TLC para um Unity Catalog
 Volume e os processa em tabelas Delta com Lakeflow Spark Declarative
 Pipelines.
 
+## Entrega do case
+
+As duas respostas pedidas estão nestes arquivos:
+
+- [SQL executável](analysis/perguntas/01_respostas_analiticas.sql);
+- [respostas e premissas](analysis/perguntas/01_respostas_analiticas.md);
+- [média mensal de total_amount em CSV](analysis/perguntas/01_media_total_mensal.csv);
+- [média de passageiros por hora em CSV](analysis/perguntas/02_media_passageiros_hora_maio.csv).
+
+O primeiro resultado consulta
+`case_ifood.tlc_data_gold.gold_yellow_trips_consumption`. O segundo usa
+`case_ifood.tlc_data_gold.gold_taxi_passengers_by_hour`, que reúne Yellow e
+Green Taxi em maio de 2023. A seção de EDA e os componentes de governança
+documentam as decisões que levaram a essas tabelas, mas não são necessários
+para localizar as respostas.
+
 ## Estrutura
 
 - `src/01_extracao.py`: baixa os Parquets e metadados oficiais para a Landing.
@@ -29,6 +45,18 @@ O `requirements.txt` descreve o ambiente virtual local para desenvolvimento e
 validações auxiliares. Os workloads produtivos não dependem desse ambiente:
 suas bibliotecas são declaradas nos `environment` dos Jobs serverless do
 Bundle.
+
+## Ambiente suportado
+
+O runtime suportado é o Databricks Free atual, com Unity Catalog, Volumes,
+SQL Warehouse, Jobs serverless e Lakeflow Spark Declarative Pipelines. Os
+scripts de transformação importam `pyspark.pipelines`, e a Pipeline usa
+`serverless: true` com o canal `CURRENT`.
+
+O projeto não oferece execução equivalente em Spark local ou no Community
+Edition clássico. Nesses ambientes faltam os serviços gerenciados usados pelo
+Bundle. O `requirements.txt` permite editar, inspecionar Parquets e validar
+partes isoladas do código; ele não substitui o runtime do Databricks.
 
 ## Autenticação no Databricks Free
 
@@ -80,6 +108,19 @@ dicionário `hvfhs` e o dataset `fhvhv` é registrado explicitamente.
 O Job usa `2023-01` a `2023-05` como padrão, que é o período do case. O
 extrator aceita outros meses ou `fim=auto`. Arquivos já íntegros são ignorados,
 e lacunas históricas são preenchidas.
+
+### Republicação dos arquivos
+
+O nome e o caminho de cada Parquet são determinísticos. A extração grava
+primeiro um arquivo `.part`, valida tamanho e marcadores Parquet e só então
+promove o download. Em novas execuções, um arquivo íntegro no mesmo caminho é
+ignorado. Essa é a idempotência usada na Landing.
+
+A NYC TLC pode republicar um mês. O fluxo não substitui automaticamente um
+arquivo já íntegro, e os registros não possuem uma chave oficial de viagem que
+permita deduplicação confiável por linha. Uma republicação exige tratamento
+controlado do arquivo afetado e full refresh da Pipeline. Anexar a nova versão
+à tabela existente sem recomputação pode produzir contagens duplicadas.
 
 `src/metadata/generate_contracts.py` lê deterministicamente os PDFs oficiais
 em inglês, registra checksum SHA-256 e gera contratos YAML no Volume em
