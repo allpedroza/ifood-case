@@ -3,27 +3,159 @@
     {
       "name": "latest_run",
       "displayName": "Última execução",
-      "query": "SELECT date_format(executed_at, 'yyyy-MM-dd HH:mm:ss') AS last_execution, evaluated_rules, ok_results, warn_results, fail_results FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary QUALIFY ROW_NUMBER() OVER (ORDER BY executed_at DESC) = 1"
+      "queryLines": [
+        "SELECT date_format(executed_at, 'yyyy-MM-dd HH:mm:ss') AS last_execution, evaluated_rules, ok_results, warn_results, fail_results FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary QUALIFY ROW_NUMBER() OVER (ORDER BY executed_at DESC) = 1"
+      ]
     },
     {
       "name": "table_success",
       "displayName": "Sucesso por tabela",
-      "query": "SELECT layer, table_name, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1) ORDER BY CASE layer WHEN 'landing' THEN 1 WHEN 'bronze' THEN 2 WHEN 'silver' THEN 3 WHEN 'gold' THEN 4 END"
+      "queryLines": [
+        "SELECT\n",
+        "  CASE layer\n",
+        "    WHEN 'landing' THEN '1. landing'\n",
+        "    WHEN 'bronze' THEN '2. bronze'\n",
+        "    WHEN 'silver' THEN '3. silver'\n",
+        "    WHEN 'gold' THEN '4. gold'\n",
+        "    ELSE layer\n",
+        "  END as layer,\n",
+        "  table_name,\n",
+        "  success_percentage\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_table_success\n",
+        "WHERE\n",
+        "  execution_id\n",
+        "    = (\n",
+        "      SELECT\n",
+        "        execution_id\n",
+        "      FROM\n",
+        "        case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "      ORDER BY\n",
+        "        executed_at DESC\n",
+        "      LIMIT 1\n",
+        "    )\n",
+        "ORDER BY\n",
+        "  CASE layer\n",
+        "    WHEN 'landing' THEN 1\n",
+        "    WHEN 'bronze' THEN 2\n",
+        "    WHEN 'silver' THEN 3\n",
+        "    WHEN 'gold' THEN 4\n",
+        "  END"
+      ]
     },
     {
       "name": "dimension_success",
       "displayName": "Sucesso por dimensão",
-      "query": "SELECT layer, dimension, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_dimension_success WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+      "queryLines": [
+        "SELECT layer, dimension, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_dimension_success WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+      ]
     },
     {
       "name": "rule_matrix",
       "displayName": "Violações por regra e camada",
-      "query": "SELECT layer, rule_name, violation_count, violation_percentage, status FROM case_ifood.tlc_data_quality.dq_dashboard_results WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+      "queryLines": [
+        "SELECT layer, rule_name, violation_count, violation_percentage, status FROM case_ifood.tlc_data_quality.dq_dashboard_results WHERE execution_id = (SELECT execution_id FROM case_ifood.tlc_data_quality.dq_dashboard_run_summary ORDER BY executed_at DESC LIMIT 1)"
+      ]
     },
     {
       "name": "success_history",
       "displayName": "Histórico de sucesso",
-      "query": "SELECT execution_date, layer, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success ORDER BY execution_date, layer"
+      "queryLines": [
+        "SELECT execution_date, layer, success_percentage FROM case_ifood.tlc_data_quality.dq_dashboard_table_success ORDER BY execution_date, layer"
+      ]
+    },
+    {
+      "name": "rules_by_dimension",
+      "displayName": "Regras por dimensão",
+      "queryLines": [
+        "SELECT\n",
+        "  dimension,\n",
+        "  COUNT(DISTINCT rule_name) as rule_count\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_results\n",
+        "WHERE\n",
+        "  execution_id\n",
+        "    = (\n",
+        "      SELECT\n",
+        "        execution_id\n",
+        "      FROM\n",
+        "        case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "      ORDER BY\n",
+        "        executed_at DESC\n",
+        "      LIMIT 1\n",
+        "    )\n",
+        "GROUP BY\n",
+        "  dimension\n",
+        "ORDER BY\n",
+        "  rule_count DESC"
+      ]
+    },
+    {
+      "name": "rules_analysis",
+      "displayName": "Análise de regras cadastradas",
+      "queryLines": [
+        "SELECT\n",
+        "  dimension,\n",
+        "  rule_name,\n",
+        "  rule_type,\n",
+        "  table_name,\n",
+        "  column_name\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_results\n",
+        "WHERE\n",
+        "  execution_id\n",
+        "    = (\n",
+        "      SELECT\n",
+        "        execution_id\n",
+        "      FROM\n",
+        "        case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "      ORDER BY\n",
+        "        executed_at DESC\n",
+        "      LIMIT 1\n",
+        "    )\n",
+        "ORDER BY\n",
+        "  dimension,\n",
+        "  rule_name"
+      ]
+    },
+    {
+      "name": "unique_rules",
+      "displayName": "Regras únicas cadastradas",
+      "queryLines": [
+        "SELECT DISTINCT\n",
+        "  rule_name,\n",
+        "  dimension,\n",
+        "  table_name,\n",
+        "  description\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_dashboard_results\n",
+        "WHERE\n",
+        "  execution_id\n",
+        "    = (\n",
+        "      SELECT\n",
+        "        execution_id\n",
+        "      FROM\n",
+        "        case_ifood.tlc_data_quality.dq_dashboard_run_summary\n",
+        "      ORDER BY\n",
+        "        executed_at DESC\n",
+        "      LIMIT 1\n",
+        "    )\n",
+        "ORDER BY\n",
+        "  dimension,\n",
+        "  rule_name"
+      ]
+    },
+    {
+      "name": "rule_catalog_count",
+      "displayName": "Contagem de regras no catálogo",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(DISTINCT rule_id) as unique_rules_count\n",
+        "FROM\n",
+        "  case_ifood.tlc_data_quality.dq_rule_catalog\n",
+        "WHERE\n",
+        "  active = true"
+      ]
     }
   ],
   "pages": [
@@ -34,48 +166,18 @@
         {
           "widget": {
             "name": "dashboard_title",
-            "textbox_spec": "# Monitoramento de qualidade — NYC TLC\nRegras determinísticas avaliadas diariamente em Landing, Bronze, Silver e Gold."
-          },
-          "position": {
-            "x": 0,
-            "y": 0,
-            "width": 6,
-            "height": 2
-          }
-        },
-        {
-          "widget": {
-            "name": "last_execution",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "latest_run",
-                  "fields": [
-                    {
-                      "name": "last_execution",
-                      "expression": "`last_execution`"
-                    }
-                  ],
-                  "disaggregated": false
-                }
-              }
-            ],
-            "spec": {
-              "encodings": {
-                "target": {
-                  "displayName": "Última execução",
-                  "fieldName": "last_execution"
-                }
-              },
-              "version": 2,
-              "widgetType": "counter"
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Monitoramento de qualidade — NYC TLC\n",
+                "\n",
+                "Regras avaliadas a cada nova carga em Landing, Bronze, Silver e Gold."
+              ]
             }
           },
           "position": {
             "x": 0,
-            "y": 2,
-            "width": 3,
+            "y": 0,
+            "width": 12,
             "height": 2
           }
         },
@@ -86,33 +188,41 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "latest_run",
+                  "datasetName": "rule_catalog_count",
                   "fields": [
                     {
-                      "name": "evaluated_rules",
-                      "expression": "`evaluated_rules`"
+                      "name": "unique_rules_count",
+                      "expression": "`unique_rules_count`"
                     }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Regras cadastradas no catálogo",
+                "showDescription": true
+              },
+              "widgetType": "counter",
               "encodings": {
                 "target": {
-                  "displayName": "Regras avaliadas",
-                  "fieldName": "evaluated_rules"
+                  "fieldName": "unique_rules_count",
+                  "displayName": "Regras únicas"
                 }
               },
-              "version": 2,
-              "widgetType": "counter"
+              "data": {
+                "queryName": "main_query"
+              }
             }
           },
           "position": {
-            "x": 3,
+            "x": 0,
             "y": 2,
-            "width": 3,
-            "height": 2
+            "width": 2,
+            "height": 4
           }
         },
         {
@@ -169,8 +279,8 @@
           },
           "position": {
             "x": 0,
-            "y": 4,
-            "width": 3,
+            "y": 14,
+            "width": 6,
             "height": 6
           }
         },
@@ -196,55 +306,61 @@
                       "expression": "`success_percentage`"
                     }
                   ],
-                  "disaggregated": false
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "% sucesso por dimensão",
+                "description": "Comparação de validity e consistency em cada camada."
+              },
+              "version": 3,
+              "widgetType": "bar",
               "encodings": {
-                "color": {
-                  "displayName": "Camada",
-                  "fieldName": "layer",
-                  "legend": {
-                    "position": "right",
-                    "title": "Camada"
-                  },
-                  "scale": {
-                    "type": "categorical"
-                  }
-                },
                 "x": {
-                  "displayName": "Dimensão",
-                  "fieldName": "dimension",
+                  "fieldName": "layer",
+                  "displayName": "Camada",
                   "scale": {
                     "type": "categorical"
                   }
                 },
                 "y": {
+                  "fieldName": "success_percentage",
                   "axis": {
                     "title": "% sucesso"
                   },
                   "displayName": "% sucesso",
-                  "fieldName": "success_percentage",
                   "scale": {
                     "type": "quantitative"
                   }
+                },
+                "color": {
+                  "fieldName": "dimension",
+                  "legend": {
+                    "position": "right",
+                    "title": "Dimensão"
+                  },
+                  "displayName": "Dimensão",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": true
                 }
               },
-              "frame": {
-                "showDescription": true,
-                "showTitle": true,
-                "title": "% sucesso por dimensão",
-                "description": "Resultado de validity e consistency por camada."
-              },
-              "version": 3,
-              "widgetType": "bar"
+              "data": {
+                "queryName": "main_query"
+              }
             }
           },
           "position": {
-            "x": 3,
-            "y": 4,
-            "width": 3,
+            "x": 4,
+            "y": 6,
+            "width": 8,
             "height": 6
           }
         },
@@ -270,55 +386,90 @@
                       "expression": "`violation_percentage`"
                     }
                   ],
-                  "disaggregated": false
+                  "cubeGroupingSets": {
+                    "sets": [
+                      {
+                        "fieldNames": [
+                          "rule_name"
+                        ]
+                      },
+                      {
+                        "fieldNames": [
+                          "layer"
+                        ]
+                      }
+                    ]
+                  },
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "`rule_name`"
+                    },
+                    {
+                      "direction": "ASC",
+                      "expression": "`layer`"
+                    }
+                  ]
                 }
               }
             ],
             "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Violações por regra e camada",
+                "description": "Intensidade da cor indica % de violações. Tons mais escuros = mais violações."
+              },
+              "version": 3,
+              "widgetType": "pivot",
               "encodings": {
-                "color": {
-                  "displayName": "Camada",
-                  "fieldName": "layer",
-                  "legend": {
-                    "position": "right",
-                    "title": "Camada"
-                  },
-                  "scale": {
-                    "type": "categorical"
+                "rows": [
+                  {
+                    "fieldName": "rule_name",
+                    "scale": {
+                      "type": "categorical"
+                    },
+                    "displayName": "Regra"
                   }
-                },
-                "x": {
-                  "displayName": "Regra",
-                  "fieldName": "rule_name",
-                  "scale": {
-                    "type": "categorical"
+                ],
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "scale": {
+                      "type": "categorical"
+                    },
+                    "displayName": "Camada"
                   }
-                },
-                "y": {
-                  "axis": {
-                    "title": "% violações"
-                  },
-                  "displayName": "% violações",
+                ],
+                "cell": {
+                  "type": "single-cell",
                   "fieldName": "violation_percentage",
-                  "scale": {
-                    "type": "quantitative"
+                  "displayName": "% violações",
+                  "style": {
+                    "type": "color-scale",
+                    "backgroundColor": {
+                      "scale": {
+                        "type": "quantitative",
+                        "colorRamp": {
+                          "mode": "scheme",
+                          "scheme": "reds"
+                        }
+                      }
+                    }
                   }
                 }
               },
-              "frame": {
-                "showDescription": false,
-                "showTitle": true,
-                "title": "Violações por regra e camada"
-              },
-              "version": 3,
-              "widgetType": "bar"
+              "data": {
+                "queryName": "main_query"
+              }
             }
           },
           "position": {
-            "x": 0,
-            "y": 10,
-            "width": 6,
-            "height": 7
+            "x": 3,
+            "y": 20,
+            "width": 9,
+            "height": 6
           }
         },
         {
@@ -389,12 +540,160 @@
           },
           "position": {
             "x": 0,
-            "y": 17,
-            "width": 6,
+            "y": 26,
+            "width": 12,
             "height": 7
           }
+        },
+        {
+          "widget": {
+            "name": "7b7eddfa",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "evaluated_rules",
+                      "expression": "`evaluated_rules`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "target": {
+                  "fieldName": "evaluated_rules",
+                  "displayName": "Regras avaliadas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ea227fc0",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "rules_by_dimension",
+                  "fields": [
+                    {
+                      "name": "dimension",
+                      "expression": "`dimension`"
+                    },
+                    {
+                      "name": "rule_count",
+                      "expression": "`rule_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "showTitle": true,
+                "title": "Regras por dimensão",
+                "showDescription": true,
+                "description": "Distribuição das regras cadastradas por dimensão de qualidade"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "dimension",
+                  "displayName": "Dimensão",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "rule_count",
+                  "displayName": "Quantidade",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 8,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "2f34cede",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "latest_run",
+                  "fields": [
+                    {
+                      "name": "evaluated_rules",
+                      "expression": "`evaluated_rules`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Regras cadastradas",
+                "showDescription": false
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "target": {
+                  "fieldName": "evaluated_rules",
+                  "change": {
+                    "type": "percent"
+                  },
+                  "rowNumber": 10,
+                  "displayName": "Regras avaliadas"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 3,
+            "height": 2
+          }
         }
-      ]
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
     }
   ]
 }
