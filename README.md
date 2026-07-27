@@ -32,13 +32,13 @@ Bundle.
 
 ## Autenticação no Databricks Free
 
-Use um perfil separado para impedir que o projeto seja implantado em outro
-workspace. Substitua a URL pela URL exata do workspace Free:
+O Bundle não fixa host, profile ou SQL Warehouse. Crie um profile para o
+workspace em que o projeto será implantado:
 
 ```bash
 databricks auth login \
-  --host https://dbc-fcfa10b2-faab.cloud.databricks.com \
-  --profile ap_ifood
+  --host <WORKSPACE_URL> \
+  --profile <PROFILE>
 ```
 
 Antes da primeira implantação, o catálogo `case_ifood` deve existir no Unity
@@ -49,14 +49,17 @@ catálogo, mas não cria o catálogo.
 Confirme a identidade e o host antes de qualquer operação:
 
 ```bash
-databricks auth describe --profile ap_ifood
+databricks auth describe --profile <PROFILE>
 ```
 
 ## Recursos implantados
 
-O host do workspace Free e o perfil `ap_ifood` estão fixados no target
-`free`, que é o único target e também o padrão do Bundle. Os schemas seguem
-o padrão `tlc_data_<layer>`:
+O target `free` usa `mode: production` para manter os nomes físicos sem
+prefixos de desenvolvimento. O profile é informado pela CLI. O ID do SQL
+Warehouse também é obrigatório no deploy, por meio da variável
+`sql_warehouse_id`.
+
+Os schemas seguem o padrão `tlc_data_<layer>`:
 
 - `case_ifood.tlc_data_landing`;
 - `case_ifood.tlc_data_bronze`;
@@ -74,8 +77,9 @@ controla esse comportamento. Na Bronze, `bronze_metadata_artifacts`
 mantém o inventário e a rastreabilidade dos arquivos, enquanto
 `bronze_taxi_zone_lookup` expõe a lookup geográfica. O de-para entre o
 dicionário `hvfhs` e o dataset `fhvhv` é registrado explicitamente.
-O Job mensal sempre percorre de `2023-01` até o mês anterior (`fim=auto`);
-arquivos já íntegros são ignorados, e lacunas históricas são preenchidas.
+O Job usa `2023-01` a `2023-05` como padrão, que é o período do case. O
+extrator aceita outros meses ou `fim=auto`. Arquivos já íntegros são ignorados,
+e lacunas históricas são preenchidas.
 
 `src/metadata/generate_contracts.py` lê deterministicamente os PDFs oficiais
 em inglês, registra checksum SHA-256 e gera contratos YAML no Volume em
@@ -280,12 +284,19 @@ implantação, materialize o contrato de qualidade antes de executar a ingestão
 
 ```bash
 cd src/databricks
-databricks bundle validate --profile ap_ifood
-databricks bundle deploy --profile ap_ifood
-databricks bundle run quality_setup --profile ap_ifood
+databricks bundle validate \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+databricks bundle deploy \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+databricks bundle run quality_setup \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 databricks bundle run ingestion \
-  --params inicio=2023-01,fim=auto \
-  --profile ap_ifood
+  --params inicio=2023-01,fim=2023-05 \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
 
 O Job `ingestion` encadeia:
@@ -301,28 +312,34 @@ dashboard.
 
 ## Atualização recorrente
 
-O Job `job_ingestao_nyc_tlc` está agendado para o dia 15 de cada mês, às 08h,
-no fuso `America/Sao_Paulo`. Seus parâmetros padrão percorrem desde `2023-01`
-até o mês anterior (`fim=auto`). Arquivos íntegros já existentes são ignorados,
-portanto a execução é retomável e preenche novas disponibilidades sem baixar
-novamente todo o histórico.
+O Job `job_ingestao_nyc_tlc` inclui um agendamento para o dia 15 de cada mês, às
+08h, no fuso `America/Sao_Paulo`, mas é implantado como `PAUSED`. A execução
+padrão termina em `2023-05`. Assim, um deploy de avaliação não inicia cargas
+recorrentes nem baixa dados fora do período solicitado.
 
 Para publicar uma mudança de código ou configuração:
 
 ```bash
 cd src/databricks
-databricks bundle validate --profile ap_ifood
-databricks bundle deploy --profile ap_ifood
+databricks bundle validate \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
+databricks bundle deploy \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 databricks bundle run ingestion \
-  --params inicio=2023-01,fim=auto \
-  --profile ap_ifood
+  --params inicio=2023-01,fim=2023-05 \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
 
 Para avaliar novamente a qualidade sem refazer a carga:
 
 ```bash
 cd src/databricks
-databricks bundle run quality_monitoring --profile ap_ifood
+databricks bundle run quality_monitoring \
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
 
 Uma atualização completa da Pipeline deve ser usada apenas quando houver
@@ -332,5 +349,13 @@ mudança de lógica, schema ou necessidade explícita de recomputar as tabelas:
 cd src/databricks
 databricks bundle run medallion \
   --full-refresh-all \
-  --profile ap_ifood
+  --profile <PROFILE> \
+  --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
+
+Para usar ingestão contínua, altere o parâmetro `fim` para `auto` e ative o
+schedule na interface ou no recurso do Bundle. A ampliação da Landing e da
+Bronze não muda o recorte de consumo. Ajuste também
+`ifood.silver.end_month` e, quando necessário,
+`ifood.analysis.passenger_reference_month` em
+`resources/medallion_pipeline.yml`.

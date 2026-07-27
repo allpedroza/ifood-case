@@ -9,12 +9,12 @@ resources:
         - name: inicio
           default: "2023-01"
         - name: fim
-          default: auto
+          default: "2023-05"
 
       schedule:
         quartz_cron_expression: "0 0 8 15 * ?"
         timezone_id: America/Sao_Paulo
-        pause_status: UNPAUSED
+        pause_status: PAUSED
 
       tasks:
         - task_key: extrair_parquets

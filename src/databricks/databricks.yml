@@ -31,7 +31,6 @@ variables:
     default: tlc_data_quality
   sql_warehouse_id:
     description: SQL Warehouse usado pelo dashboard de qualidade
-    default: 4c5e862e31dfcba6
   volume_name:
     description: Volume gerenciado para os Parquets originais
     default: nyc_tlc_landing
@@ -41,6 +40,4 @@ targets:
     mode: production
     default: true
     workspace:
-      host: https://dbc-fcfa10b2-faab.cloud.databricks.com
-      profile: ap_ifood
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
