@@ -1,5 +1,7 @@
-# Dependências do ambiente local de desenvolvimento.
-# O runtime Databricks está definido em src/databricks/resources/.
+# Ambiente local de desenvolvimento com Python 3.12.
+# As dependências dos Jobs serverless ficam em src/databricks/resources/.
+# PySpark não é instalado localmente: o pipeline usa pyspark.pipelines,
+# disponibilizado pelo runtime Lakeflow Declarative Pipelines.
 
 # Manipulação e análise local de dados tabulares
 pandas>=2.2,<3.0
@@ -15,3 +17,6 @@ requests>=2.32,<3.0
 
 # Extração determinística dos dicionários oficiais em PDF
 pypdf>=6,<7
+
+# Leitura e validação local do catálogo de regras de qualidade
+pyyaml>=6,<7
