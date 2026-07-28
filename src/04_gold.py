@@ -166,6 +166,30 @@ PASSENGER_BY_HOUR_SCHEMA = StructType(
             },
         ),
         StructField(
+            "average_yellow_passenger_count",
+            DoubleType(),
+            True,
+            {
+                "comment": (
+                    "Average positive passenger count across Yellow Taxi "
+                    "trips."
+                ),
+                "source_column": "passenger_count",
+            },
+        ),
+        StructField(
+            "average_green_passenger_count",
+            DoubleType(),
+            True,
+            {
+                "comment": (
+                    "Average positive passenger count across Green Taxi "
+                    "trips."
+                ),
+                "source_column": "passenger_count",
+            },
+        ),
+        StructField(
             "trips_considered",
             LongType(),
             False,
@@ -299,6 +323,18 @@ def gold_taxi_passengers_by_hour():
             F.avg(F.when(valid, F.col("passenger_count"))).alias(
                 "average_passenger_count"
             ),
+            F.avg(
+                F.when(
+                    valid & (F.col("service_type") == "yellow"),
+                    F.col("passenger_count"),
+                )
+            ).alias("average_yellow_passenger_count"),
+            F.avg(
+                F.when(
+                    valid & (F.col("service_type") == "green"),
+                    F.col("passenger_count"),
+                )
+            ).alias("average_green_passenger_count"),
             F.count(F.when(valid, 1)).alias("trips_considered"),
             F.count(
                 F.when(valid & (F.col("service_type") == "yellow"), 1)
@@ -322,6 +358,8 @@ def gold_taxi_passengers_by_hour():
         .select(
             "hour_of_day",
             "average_passenger_count",
+            "average_yellow_passenger_count",
+            "average_green_passenger_count",
             "trips_considered",
             "yellow_trips_considered",
             "green_trips_considered",

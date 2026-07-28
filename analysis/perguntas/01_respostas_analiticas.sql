@@ -61,13 +61,17 @@ ORDER BY mes_referencia;
 -- MAGIC
 -- MAGIC Táxi é interpretado no sentido regulatório: Yellow Taxi e Green Taxi.
 -- MAGIC FHV e High Volume FHV não são incluídos. A Gold considera somente
--- MAGIC `passenger_count > 0` e expõe a quantidade descartada.
+-- MAGIC `passenger_count > 0` e expõe a quantidade descartada. A média
+-- MAGIC conjunta responde ao enunciado; as médias exclusivas de Yellow e
+-- MAGIC Green permitem comparar os dois serviços.
 
 -- COMMAND ----------
 
 SELECT
   hour_of_day AS hora_do_dia,
-  ROUND(average_passenger_count, 2) AS media_passageiros,
+  ROUND(average_passenger_count, 2) AS media_yellow_green,
+  ROUND(average_yellow_passenger_count, 2) AS media_apenas_yellow,
+  ROUND(average_green_passenger_count, 2) AS media_apenas_green,
   trips_considered AS viagens_consideradas,
   yellow_trips_considered AS viagens_yellow,
   green_trips_considered AS viagens_green,

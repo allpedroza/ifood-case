@@ -2,7 +2,7 @@
 
 Os resultados vieram do notebook
 [`01_respostas_analiticas.sql`](01_respostas_analiticas.sql), executado no
-Databricks em 27 de julho de 2026.
+Databricks em 28 de julho de 2026.
 
 Fontes:
 
@@ -44,39 +44,46 @@ iguais a zero ou negativos são excluídos do denominador e apresentados como
 viagens descartadas. Yellow utiliza `tpep_pickup_datetime` e Green utiliza
 `lpep_pickup_datetime`; ambos são harmonizados como horário de embarque.
 
-| Hora | Média de passageiros | Viagens consideradas | Yellow | Green | Descartadas |
-|---:|---:|---:|---:|---:|---:|
-| 00 | 1,43 | 90.848 | 89.782 | 1.066 | 4.414 |
-| 01 | 1,43 | 59.143 | 58.390 | 753 | 3.005 |
-| 02 | 1,45 | 38.179 | 37.614 | 565 | 2.119 |
-| 03 | 1,45 | 25.048 | 24.571 | 477 | 1.548 |
-| 04 | 1,40 | 16.479 | 16.131 | 348 | 1.953 |
-| 05 | 1,28 | 18.861 | 18.481 | 380 | 1.893 |
-| 06 | 1,26 | 46.937 | 45.887 | 1.050 | 3.755 |
-| 07 | 1,28 | 94.761 | 92.325 | 2.436 | 7.501 |
-| 08 | 1,29 | 129.182 | 126.208 | 2.974 | 9.658 |
-| 09 | 1,31 | 145.086 | 141.807 | 3.279 | 8.702 |
-| 10 | 1,35 | 157.936 | 154.749 | 3.187 | 8.081 |
-| 11 | 1,36 | 172.091 | 168.620 | 3.471 | 8.280 |
-| 12 | 1,37 | 185.481 | 181.923 | 3.558 | 8.675 |
-| 13 | 1,38 | 189.536 | 186.197 | 3.339 | 8.973 |
-| 14 | 1,39 | 206.538 | 202.516 | 4.022 | 9.797 |
-| 15 | 1,40 | 211.294 | 206.927 | 4.367 | 10.009 |
-| 16 | 1,40 | 211.784 | 207.049 | 4.735 | 9.705 |
-| 17 | 1,39 | 231.006 | 226.111 | 4.895 | 10.454 |
-| 18 | 1,38 | 245.268 | 240.225 | 5.043 | 10.601 |
-| 19 | 1,39 | 219.880 | 215.799 | 4.081 | 8.685 |
-| 20 | 1,40 | 195.045 | 191.841 | 3.204 | 7.136 |
-| 21 | 1,42 | 198.770 | 195.990 | 2.780 | 7.463 |
-| 22 | 1,43 | 183.506 | 181.332 | 2.174 | 7.842 |
-| 23 | 1,42 | 143.273 | 141.649 | 1.624 | 6.632 |
+Yellow + Green é a resposta principal. As médias exclusivas de cada serviço
+foram acrescentadas como complemento, sem alterar o universo definido para a
+pergunta.
+
+| Hora | Yellow + Green | Apenas Yellow | Apenas Green | Viagens consideradas | Yellow | Green | Descartadas |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 00 | 1,43 | 1,43 | 1,38 | 90.848 | 89.782 | 1.066 | 4.414 |
+| 01 | 1,43 | 1,44 | 1,33 | 59.143 | 58.390 | 753 | 3.005 |
+| 02 | 1,45 | 1,45 | 1,38 | 38.179 | 37.614 | 565 | 2.119 |
+| 03 | 1,45 | 1,45 | 1,32 | 25.048 | 24.571 | 477 | 1.548 |
+| 04 | 1,40 | 1,40 | 1,35 | 16.479 | 16.131 | 348 | 1.953 |
+| 05 | 1,28 | 1,28 | 1,29 | 18.861 | 18.481 | 380 | 1.893 |
+| 06 | 1,26 | 1,26 | 1,28 | 46.937 | 45.887 | 1.050 | 3.755 |
+| 07 | 1,28 | 1,28 | 1,26 | 94.761 | 92.325 | 2.436 | 7.501 |
+| 08 | 1,29 | 1,30 | 1,21 | 129.182 | 126.208 | 2.974 | 9.658 |
+| 09 | 1,31 | 1,31 | 1,26 | 145.086 | 141.807 | 3.279 | 8.702 |
+| 10 | 1,35 | 1,35 | 1,29 | 157.936 | 154.749 | 3.187 | 8.081 |
+| 11 | 1,36 | 1,36 | 1,32 | 172.091 | 168.620 | 3.471 | 8.280 |
+| 12 | 1,37 | 1,38 | 1,30 | 185.481 | 181.923 | 3.558 | 8.675 |
+| 13 | 1,38 | 1,38 | 1,26 | 189.536 | 186.197 | 3.339 | 8.973 |
+| 14 | 1,39 | 1,39 | 1,28 | 206.538 | 202.516 | 4.022 | 9.797 |
+| 15 | 1,40 | 1,40 | 1,27 | 211.294 | 206.927 | 4.367 | 10.009 |
+| 16 | 1,40 | 1,40 | 1,27 | 211.784 | 207.049 | 4.735 | 9.705 |
+| 17 | 1,39 | 1,39 | 1,25 | 231.006 | 226.111 | 4.895 | 10.454 |
+| 18 | 1,38 | 1,38 | 1,27 | 245.268 | 240.225 | 5.043 | 10.601 |
+| 19 | 1,39 | 1,39 | 1,27 | 219.880 | 215.799 | 4.081 | 8.685 |
+| 20 | 1,40 | 1,40 | 1,30 | 195.045 | 191.841 | 3.204 | 7.136 |
+| 21 | 1,42 | 1,42 | 1,30 | 198.770 | 195.990 | 2.780 | 7.463 |
+| 22 | 1,43 | 1,43 | 1,34 | 183.506 | 181.332 | 2.174 | 7.842 |
+| 23 | 1,42 | 1,42 | 1,33 | 143.273 | 141.649 | 1.624 | 6.632 |
 
 A média permaneceu próxima de um a dois passageiros durante todo o dia,
 variando de 1,26 passageiro às 06h a 1,45 passageiro às 02h e às 03h.
 O maior volume válido ocorreu às 18h, com 245.268 viagens consideradas.
 Em todas as horas, Yellow representou a maior parte das viagens, enquanto
 Green permaneceu incluído para preservar o conceito regulatório de todos os
-táxis.
+táxis. A média Green foi menor que a Yellow em 22 das 24 horas. Às 05h e às
+06h ela foi ligeiramente maior, e às 07h ficou próxima. Como Green responde
+por uma parcela pequena das viagens válidas, a média conjunta acompanha de
+perto a média Yellow.
 
 ## Reproduzir os resultados
 
