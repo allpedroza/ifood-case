@@ -30,6 +30,7 @@ CANONICAL_COLUMNS = {
     "dropoff_datetime": "timestamp",
     "reference_month": "string",
 }
+SUPPORTED_LAYERS = ("landing", "bronze", "silver", "gold")
 
 RESULT_SCHEMA = StructType(
     [
@@ -60,7 +61,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quality-schema", required=True)
     parser.add_argument("--start-month", required=True)
     parser.add_argument("--end-month", required=True)
-    return parser.parse_args()
+    parser.add_argument(
+        "--layers",
+        default=",".join(SUPPORTED_LAYERS),
+        help="Camadas separadas por vírgula.",
+    )
+    parser.add_argument(
+        "--gate-on-fail",
+        choices=("true", "false"),
+        default="false",
+        help="Interrompe a execução quando uma regra retorna FAIL.",
+    )
+    args = parser.parse_args()
+    args.layers = tuple(
+        layer.strip()
+        for layer in args.layers.split(",")
+        if layer.strip()
+    )
+    invalid_layers = set(args.layers) - set(SUPPORTED_LAYERS)
+    if not args.layers or invalid_layers:
+        parser.error(
+            "layers inválidas: "
+            f"{', '.join(sorted(invalid_layers)) or 'nenhuma informada'}"
+        )
+    args.gate_on_fail = args.gate_on_fail == "true"
+    return args
 
 
 def month_sequence(start_month: str, end_month: str) -> list[str]:
@@ -266,13 +291,15 @@ def main() -> None:
         args.start_month,
         args.end_month,
     )
-    layers = [
-        (
+    layers = []
+    if "landing" in args.layers:
+        layers.append((
             "landing",
             f"{args.landing_path}/yellow",
             landing_frame(spark, args.landing_path, months),
-        ),
-        (
+        ))
+    if "bronze" in args.layers:
+        layers.append((
             "bronze",
             bronze_table,
             table_frame(
@@ -282,8 +309,9 @@ def main() -> None:
                 "VendorID",
                 "_reference_month",
             ),
-        ),
-        (
+        ))
+    if "silver" in args.layers:
+        layers.append((
             "silver",
             silver_table,
             table_frame(
@@ -293,8 +321,9 @@ def main() -> None:
                 "vendor_id",
                 "_reference_month",
             ),
-        ),
-        (
+        ))
+    if "gold" in args.layers:
+        layers.append((
             "gold",
             gold_table,
             table_frame(
@@ -304,8 +333,7 @@ def main() -> None:
                 "VendorID",
                 "_reference_month",
             ),
-        ),
-    ]
+        ))
     rules = load_active_rules(spark, args.catalog, args.quality_schema)
     results = []
     for layer, table_name, frame in layers:
@@ -346,6 +374,20 @@ def main() -> None:
         f"Execução {execution_id}: {len(results)} resultados gravados em "
         f"{target} para {args.start_month} a {args.end_month}."
     )
+    failed = [
+        result
+        for result in results
+        if result["status"] == "FAIL"
+    ]
+    if args.gate_on_fail and failed:
+        failures = ", ".join(
+            f"{result['layer']}.{result['rule_id']}"
+            for result in failed
+        )
+        raise RuntimeError(
+            "gate de qualidade bloqueou a promoção para Gold: "
+            f"{len(failed)} resultado(s) FAIL ({failures})"
+        )
 
 
 if __name__ == "__main__":

@@ -45,17 +45,51 @@ resources:
               - /Volumes/${var.catalog}/${resources.schemas.landing.name}/${resources.volumes.tlc_raw.name}/tlc/_metadata/contracts
           environment_key: default
 
-        - task_key: atualizar_medallion
+        - task_key: atualizar_bronze_silver
           depends_on:
             - task_key: gerar_contratos
           pipeline_task:
             pipeline_id: ${resources.pipelines.medallion.id}
+            refresh_selection:
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_yellow_trips
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_green_trips
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_fhv_trips
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_fhvhv_trips
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_metadata_artifacts
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_taxi_zone_lookup
+              - ${var.catalog}.${resources.schemas.bronze.name}.bronze_metadata_columns
+              - ${var.catalog}.${resources.schemas.silver_schema.name}.silver_yellow_trips
+              - ${var.catalog}.${resources.schemas.silver_schema.name}.silver_green_trips
+              - ${var.catalog}.${resources.schemas.silver_schema.name}.silver_fhv_trips
+              - ${var.catalog}.${resources.schemas.silver_schema.name}.silver_fhvhv_trips
+              - ${var.catalog}.${resources.schemas.silver_schema.name}.silver_taxi_zone_lookup
 
-        - task_key: avaliar_qualidade
+        - task_key: validar_qualidade_pre_gold
           depends_on:
-            - task_key: atualizar_medallion
+            - task_key: atualizar_bronze_silver
           run_job_task:
             job_id: ${resources.jobs.quality_monitoring.id}
+            job_parameters:
+              layers: "landing,bronze,silver"
+              gate_on_fail: "true"
+
+        - task_key: atualizar_gold
+          depends_on:
+            - task_key: validar_qualidade_pre_gold
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.medallion.id}
+            refresh_selection:
+              - ${var.catalog}.${resources.schemas.gold_schema.name}.gold_yellow_trips_consumption
+              - ${var.catalog}.${resources.schemas.gold_schema.name}.gold_taxi_passengers_by_hour
+
+        - task_key: consolidar_qualidade
+          depends_on:
+            - task_key: atualizar_gold
+          run_job_task:
+            job_id: ${resources.jobs.quality_monitoring.id}
+            job_parameters:
+              layers: "landing,bronze,silver,gold"
+              gate_on_fail: "false"
 
       environments:
         - environment_key: default

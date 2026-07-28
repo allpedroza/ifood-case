@@ -4,8 +4,14 @@ resources:
       name: job_monitoramento_qualidade_nyc_tlc
       description: >-
         Avalia as regras governadas de qualidade nas camadas Landing, Bronze,
-        Silver e Gold após cada atualização da carga da NYC TLC.
+        Silver e Gold. Pode atuar como gate antes da promoção para Gold quando
+        executado com gate_on_fail=true.
       max_concurrent_runs: 1
+      parameters:
+        - name: layers
+          default: "landing,bronze,silver,gold"
+        - name: gate_on_fail
+          default: "false"
 
       tasks:
         - task_key: avaliar_qualidade
@@ -28,6 +34,10 @@ resources:
               - "2023-01"
               - --end-month
               - "2023-05"
+              - --layers
+              - "{{job.parameters.layers}}"
+              - --gate-on-fail
+              - "{{job.parameters.gate_on_fail}}"
           environment_key: default
 
       environments:

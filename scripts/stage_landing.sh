@@ -9,6 +9,9 @@ VOLUME_NAME="nyc_tlc_landing"
 INICIO=""
 FIM=""
 DRY_RUN=false
+MAX_TENTATIVAS_UPLOAD="${MAX_TENTATIVAS_UPLOAD:-3}"
+ESPERA_UPLOAD_SEGUNDOS="${ESPERA_UPLOAD_SEGUNDOS:-5}"
+TIMEOUT_UPLOAD_SEGUNDOS="${TIMEOUT_UPLOAD_SEGUNDOS:-1800}"
 
 erro() {
   printf 'Erro: %s\n' "$1" >&2
@@ -94,6 +97,7 @@ if [[ "$DRY_RUN" == false ]]; then
   command -v curl >/dev/null 2>&1 || erro "curl não encontrado"
   command -v databricks >/dev/null 2>&1 ||
     erro "Databricks CLI não encontrada"
+  command -v python3 >/dev/null 2>&1 || erro "python3 não encontrado"
 fi
 
 DESTINO_BASE="dbfs:/Volumes/$CATALOG/$LANDING_SCHEMA/$VOLUME_NAME/tlc"
@@ -122,12 +126,82 @@ METADATA_URLS=(
 )
 TRIP_TYPES=("yellow" "green" "fhv" "fhvhv")
 
-arquivo_remoto_existe() {
-  local diretorio="$1"
-  local nome="$2"
-  databricks fs ls "$diretorio" --profile "$PROFILE" 2>/dev/null |
-    awk '{print $NF}' |
-    grep -Fqx "$nome"
+tamanho_remoto() {
+  local caminho="$1"
+  local diretorio="${caminho%/*}"
+  local nome="${caminho##*/}"
+  local resposta=""
+  resposta="$(
+    databricks fs ls "$diretorio" \
+      --output json \
+      --profile "$PROFILE" 2>/dev/null
+  )" || return 1
+  python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+items = data if isinstance(data, list) else data.get("files", [])
+matches = [item for item in items if item.get("name") == sys.argv[1]]
+if len(matches) != 1 or matches[0].get("size") is None:
+    raise SystemExit(1)
+print(matches[0]["size"])
+' "$nome" <<<"$resposta"
+}
+
+executar_com_timeout() {
+  local segundos="$1"
+  shift
+
+  "$@" &
+  local comando_pid=$!
+  (
+    sleep "$segundos"
+    kill -TERM "$comando_pid" 2>/dev/null || true
+  ) &
+  local watchdog_pid=$!
+  local status=0
+
+  wait "$comando_pid" || status=$?
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+  return "$status"
+}
+
+enviar_com_retry() {
+  local arquivo_local="$1"
+  local caminho_remoto="$2"
+  local tamanho_local="$3"
+  local tentativa=1
+  local tamanho_enviado=""
+
+  while ((tentativa <= MAX_TENTATIVAS_UPLOAD)); do
+    printf 'upload %d/%d: %s\n' \
+      "$tentativa" "$MAX_TENTATIVAS_UPLOAD" "$(basename "$caminho_remoto")"
+    if executar_com_timeout \
+      "$TIMEOUT_UPLOAD_SEGUNDOS" \
+      databricks fs cp \
+        "$arquivo_local" \
+        "$caminho_remoto" \
+        --overwrite \
+        --profile "$PROFILE"; then
+      tamanho_enviado="$(tamanho_remoto "$caminho_remoto" || true)"
+      if [[ "$tamanho_enviado" == "$tamanho_local" ]]; then
+        return 0
+      fi
+      printf 'tamanho remoto divergente: local=%s, remoto=%s\n' \
+        "$tamanho_local" "${tamanho_enviado:-indisponível}" >&2
+    else
+      printf 'falha ou timeout no upload de %s\n' \
+        "$(basename "$caminho_remoto")" >&2
+    fi
+
+    if ((tentativa < MAX_TENTATIVAS_UPLOAD)); then
+      sleep "$ESPERA_UPLOAD_SEGUNDOS"
+    fi
+    tentativa=$((tentativa + 1))
+  done
+  return 1
 }
 
 validar_parquet() {
@@ -145,14 +219,12 @@ baixar_e_enviar() {
   local diretorio_remoto="$3"
   local parquet="$4"
   local arquivo_local="$PASTA_TEMPORARIA/$nome"
+  local caminho_remoto="$diretorio_remoto/$nome"
+  local tamanho_local=""
+  local tamanho_existente=""
 
   if [[ "$DRY_RUN" == true ]]; then
     printf 'planejado: %s -> %s/%s\n' "$url" "$diretorio_remoto" "$nome"
-    return
-  fi
-
-  if arquivo_remoto_existe "$diretorio_remoto" "$nome"; then
-    printf 'já existe no Volume, pulando: %s\n' "$nome"
     return
   fi
 
@@ -170,15 +242,20 @@ baixar_e_enviar() {
   if [[ "$parquet" == true ]] && ! validar_parquet "$arquivo_local"; then
     erro "assinatura Parquet inválida: $nome"
   fi
+  tamanho_local="$(wc -c <"$arquivo_local" | tr -d '[:space:]')"
+
+  tamanho_existente="$(tamanho_remoto "$caminho_remoto" || true)"
+  if [[ "$tamanho_existente" == "$tamanho_local" ]]; then
+    rm "$arquivo_local"
+    printf 'já existe no Volume com o mesmo tamanho, pulando: %s\n' "$nome"
+    return
+  fi
 
   databricks fs mkdir "$diretorio_remoto" --profile "$PROFILE"
-  databricks fs cp \
-    "$arquivo_local" \
-    "$diretorio_remoto/$nome" \
-    --overwrite \
-    --profile "$PROFILE"
+  enviar_com_retry "$arquivo_local" "$caminho_remoto" "$tamanho_local" ||
+    erro "upload não confirmado após $MAX_TENTATIVAS_UPLOAD tentativas: $nome"
   rm "$arquivo_local"
-  printf 'enviado: %s\n' "$nome"
+  printf 'enviado e validado por tamanho: %s\n' "$nome"
 }
 
 PASTA_TEMPORARIA="$(mktemp -d "${TMPDIR:-/tmp}/ifood-landing.XXXXXX")"

@@ -268,9 +268,12 @@ databricks bundle run ingestion \
   --var="sql_warehouse_id=<WAREHOUSE_ID>"
 ```
 
-O Job confirma que os arquivos estão íntegros na Landing, gera os contratos,
-atualiza Bronze, Silver e Gold e executa as regras de qualidade. Não inicie
-`medallion` em paralelo, pois uma Pipeline aceita somente um update ativo.
+O Job confirma a Landing, gera os contratos e atualiza Bronze e Silver. Em
+seguida, executa o gate de qualidade e, se não houver `FAIL`, atualiza a Gold.
+O mesmo pipeline Medallion recebe duas atualizações seletivas e sequenciais.
+Isso respeita o limite da Free Edition e evita um segundo pipeline declarativo.
+Não inicie `medallion` em paralelo, pois um pipeline aceita somente um update
+ativo.
 
 ### 9. Conferir a implantação
 
@@ -406,9 +409,15 @@ camadas Landing, Bronze, Silver e Gold:
 
 `quality_setup` materializa o catálogo de regras, a tabela histórica de
 resultados e as views de monitoramento em `tlc_data_quality`.
-`quality_monitoring` avalia as regras depois de cada atualização bem-sucedida
-da Medallion. Se houver mais de uma avaliação no mesmo dia, apenas a execução
-mais recente daquele dia permanece no histórico.
+O Job executa uma atualização seletiva de Landing lógica, Bronze e Silver no
+único pipeline Medallion. Em seguida, `quality_monitoring` avalia essas camadas
+com o gate habilitado. Resultados `WARN` são registrados e permitem a promoção;
+um resultado `FAIL` interrompe o Job antes da atualização seletiva das tabelas
+Gold. O contrato deste case resolve todas as nove regras como `WARN`.
+
+Depois da Gold, o Job avalia novamente as quatro camadas para consolidar o
+monitoramento usado pelo dashboard. Se houver mais de uma avaliação no mesmo
+dia, apenas a execução consolidada mais recente permanece no histórico.
 
 As regras sinalizam violações, mas não removem registros automaticamente. A
 exclusão acontece somente quando o contrato de um produto de consumo a declara,
