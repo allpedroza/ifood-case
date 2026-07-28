@@ -16,9 +16,10 @@ As duas respostas pedidas estão nestes arquivos:
 O primeiro resultado consulta
 `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`. O segundo usa
 `case_ifood.tlc_data_gold.gold_taxi_passengers_by_hour`, que reúne Yellow e
-Green Taxi em maio de 2023. A seção de EDA e os componentes de governança
-documentam as decisões que levaram a essas tabelas, mas não são necessários
-para localizar as respostas.
+Green Taxi em maio de 2023. A média conjunta responde ao enunciado, enquanto
+as médias exclusivas de Yellow e Green são apresentadas como complemento. A
+seção de EDA e os componentes de governança documentam as decisões que levaram
+a essas tabelas, mas não são necessários para localizar as respostas.
 
 ## Estrutura
 
@@ -393,6 +394,8 @@ A Gold também publica `gold_taxi_passengers_by_hour`, que interpreta táxi no
 sentido regulatório e combina, por `UNION ALL`, viagens Yellow e Green de maio
 de 2023. FHV e High Volume FHV ficam fora desse produto. Contagens nulas ou
 menores ou iguais a zero são excluídas da média e contabilizadas separadamente.
+A tabela publica a média conjunta e as médias exclusivas de Yellow e Green,
+permitindo comparar os serviços sem alterar a resposta principal.
 
 ## Data Quality
 
@@ -453,7 +456,9 @@ A exploração partiu da Gold
 atributos obrigatórios do case, e foi ampliada para
 `gold_taxi_passengers_by_hour` quando a semântica da segunda pergunta exigiu
 considerar Yellow e Green Taxi. A janela analítica é de janeiro a maio de 2023;
-para a média de passageiros por hora, o mês de referência é maio de 2023.
+para a média de passageiros por hora, o mês de referência é maio de 2023. A
+resposta usa o conjunto Yellow + Green e apresenta os recortes exclusivos de
+cada serviço como análise complementar.
 
 O processo adotado foi:
 
@@ -525,7 +530,8 @@ Também considerei o que fazer com `passenger_count` nulo ou igual a zero. Nulo
 é ausência de informação; zero é um valor informado. Tratar os dois como a
 mesma coisa esconderia um problema de completude. A tabela detalhada mantém os
 dois casos. O agregado `gold_taxi_passengers_by_hour` usa apenas valores
-positivos na média e informa quantas viagens foram descartadas.
+positivos na média, informa quantas viagens foram descartadas e expõe médias
+separadas para Yellow e Green.
 
 Os valores não positivos de `total_amount` ficaram na base. Eles podem ser
 ajustes ou estornos, e os documentos consultados não sustentam uma correção
@@ -543,7 +549,9 @@ continua restrita a Yellow porque os nomes `tpep_pickup_datetime` e
 `tpep_dropoff_datetime` pertencem a esse contrato. Já a pergunta sobre "todos
 os táxis" inclui Yellow e Green no sentido regulatório. FHV e High Volume FHV
 ficam fora porque não são táxis e não fornecem `passenger_count`. Essa diferença
-de escopo gerou `gold_taxi_passengers_by_hour`.
+de escopo gerou `gold_taxi_passengers_by_hour`. A resposta principal combina
+Yellow e Green; os recortes exclusivos mostram o efeito de cada serviço sem
+substituir essa leitura.
 
 Nem toda ausência recente é falha de extração. A TLC publica categorias em
 ritmos diferentes, então o extrator tolera `403` e `404` na cauda mais recente.

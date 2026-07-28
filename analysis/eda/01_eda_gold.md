@@ -5,6 +5,11 @@ executado em 27 de julho de 2026.
 
 Fonte: `case_ifood.tlc_data_gold.gold_yellow_trips_consumption`.
 
+Este snapshot explora a Gold detalhada de Yellow Taxi. A resposta da pergunta
+sobre todos os táxis, incluindo a comparação entre Yellow + Green, apenas
+Yellow e apenas Green, está em
+[`../perguntas/01_respostas_analiticas.md`](../perguntas/01_respostas_analiticas.md).
+
 O período analisado compreende os arquivos de referência de janeiro a maio de
 2023. O mês é determinado por `_reference_month`, e não pelo timestamp da
 viagem, para que registros temporalmente anômalos continuem associados ao
